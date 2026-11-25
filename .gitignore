@@ -2,3 +2,11 @@ docs/internal/
 docs/diagrams/*.finalize*.json
 docs/diagrams/*.browser-check.json
 docs/diagrams/*.delivery.json
+
+# python / uv
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.env
