@@ -27,7 +27,7 @@
       "id": "ui",
       "type": "frontend",
       "label": "Demo UI",
-      "sublabel": "Alpine.js + uPlot",
+      "sublabel": "Alpine.js",
       "pos": [
         40,
         220
@@ -36,7 +36,7 @@
         170,
         64
       ],
-      "explanation": "One static page served by FastAPI. Picks sensors, metrics, statistic and range, then renders a table and a chart. No build step."
+      "explanation": "One static page served by FastAPI. Picks sensors, metrics, statistic and range, then shows a results table and a simple per-metric bar comparison. No build step."
     },
     {
       "id": "ingest",
@@ -66,7 +66,7 @@
         170,
         64
       ],
-      "explanation": "Resolves the range (default last 24 h, 1 to 31 days), runs one SQL GROUP BY sensor_id, metric with min/max/sum/avg, and returns null with count 0 for an empty range. The same app also serves the static demo UI."
+      "explanation": "Resolves the half-open range [start, end) (default last 24 h, 1 to 31 days) and runs one SQL GROUP BY sensor_id, metric with min/max/sum/avg. Unknown sensors or metrics and empty ranges simply return no rows. The same app also serves the static demo UI."
     },
     {
       "id": "db",
@@ -180,8 +180,8 @@
       "title": "Read path",
       "items": [
         "One SQL GROUP BY sensor_id, metric: min/max/sum/avg",
-        "Range 1 to 31 days, default last 24 h",
-        "Empty range returns value null, count 0"
+        "Half-open range, 1 to 31 days, default last 24 h",
+        "No data or unknown ids: results: [] (never null)"
       ]
     },
     {

@@ -22,8 +22,8 @@ aggregate queries (min / max / sum / avg) over a time range.
 | API | FastAPI, Pydantic v2, fully async |
 | DB access | SQLAlchemy 2.0 async + asyncpg, Alembic migrations |
 | Database | Plain Postgres 17 (pinned image), single unpartitioned table, Docker Compose |
-| UI | Single static page: Alpine.js + uPlot, served by FastAPI |
-| Tests | pytest + httpx `AsyncClient` against a real Postgres |
+| UI | Single static page: Alpine.js, served by FastAPI |
+| Tests | pytest + httpx: black-box over HTTP against the running stack, plus unit tests |
 | Load test | k6 (Docker) |
 | Quality gates | ruff (lint + format), ty, pre-commit |
 | Agent docs | `AGENTS.md` only (references the FastAPI skill) |
@@ -33,23 +33,24 @@ aggregate queries (min / max / sum / avg) over a time range.
 These fill gaps in the brief and will be listed in the README.
 
 1. **Sensors and metrics are implicit.** They exist once a reading arrives; there's no
-   registration step. Metric names are an open set validated by pattern
-   (`^[a-z][a-z0-9_]{0,31}$`); the same goes for sensor ids. One implicit unit per metric.
+   registration step. Metric names are an open set validated by `^[a-z][a-z0-9_]{0,31}$`;
+   sensor ids allow hyphens and longer values (`^[a-z0-9][a-z0-9_-]{0,63}$`). One implicit unit per metric.
 2. **Timestamps** must carry a timezone (ISO 8601) and are stored in UTC. If omitted
    at ingest, the server time is used. Readings more than 5 minutes in the future are rejected.
-3. **Date range** must be between 1 day and 31 days ("one month"), with `start < end`.
+3. **Date range** is half-open `[start, end)` and must be between 1 day (24h) and 31 days ("one month"), with `start < end`.
    Out-of-range requests get 422 and are never clamped. If no range is given, it's the last 24 hours. If only
    `end` is given, `start = end - 24h`; if only `start`, `end = now`.
 4. **One statistic per query**, applied to every requested metric.
 5. **Results are per sensor and metric.** An aggregate across sensors is a possible
    extension.
-6. **Unknown sensors or metrics** in a query produce no rows (empty result), not 404,
-   because sensors are implicit.
-7. **No data in range** → `value: null`, `count: 0`. We never divide by zero.
-8. **Duplicates**: same `(sensor_id, metric, ts)` is treated as a retry; the first
-   write wins (`ON CONFLICT DO NOTHING`). The response reports how many rows were inserted and how many were duplicates.
-9. Values must be finite floats (NaN/inf rejected).
-10. No authentication (out of scope for the PoC).
+6. **Unknown sensors, unknown metrics, or no data in range** produce no rows (`results: []`),
+   not 404 or null placeholders, matching `GROUP BY` (every returned row has `count >= 1`, so
+   we never divide by zero).
+7. **Duplicates**: same `(sensor_id, metric, ts)` is treated as a retry (including duplicates
+   within the same batch); the first write wins (`ON CONFLICT DO NOTHING`). The response reports
+   how many `(sensor_id, metric, ts)` points were inserted and how many were duplicates.
+8. Values must be finite floats (NaN/inf rejected).
+9. No authentication (out of scope for the PoC).
 
 ## Data model
 
@@ -88,7 +89,9 @@ Base path `/api/v1`. Errors use FastAPI's standard shape (`422` validation, `400
 
 ### `POST /api/v1/readings`
 
-Accepts a batch (1..1000 readings), so a single reading and a batch use the same endpoint.
+Accepts a batch (1..1000 readings, each with at least 1 metric, capped at 10,000 total metric
+points per request to stay well under Postgres's 65,535 bind-parameter limit), so a single
+reading and a batch use the same endpoint.
 
 ```json
 {
@@ -99,8 +102,8 @@ Accepts a batch (1..1000 readings), so a single reading and a batch use the same
 }
 ```
 
-→ `201 {"inserted": 2, "duplicates": 0}`. The response is sent after commit, in one multi-row
-`INSERT ... ON CONFLICT DO NOTHING` per request.
+→ `201 {"inserted": 2, "duplicates": 0}` (counts are per `(sensor_id, metric, ts)` point). The
+response is sent after commit, in one multi-row `INSERT ... ON CONFLICT DO NOTHING` per request.
 
 ### `GET /api/v1/stats`
 
@@ -143,9 +146,9 @@ A single `SELECT sensor_id, metric, <agg>(value), count(*) ... GROUP BY sensor_i
 ```
 app/            main.py, config.py, db.py, models.py, schemas.py, api/ (readings, stats, sensors, health)
 alembic/        migrations
-static/         index.html, app.js (Alpine + uPlot)
+static/         index.html, app.js (Alpine.js)
 scripts/        seed.py (bulk COPY of synthetic data)
-tests/          integration tests against a Postgres test DB
+tests/          blackbox/ (HTTP-only contract tests), unit/ (pure logic)
 perf/           k6 scripts: ingest.js, query.js + results write-up
 compose.yaml    db, api (+ test db / k6 via profiles)
 AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
@@ -167,7 +170,7 @@ contract and fail, then the implementation makes them pass. One commit per miles
       and query (range resolution, SQL aggregates, empty results) until the suite passes.
       Range resolution also gets plain unit tests.
 - [ ] **M4 Data:** seed script (N sensors × 30 days, daily sine + noise, several metrics) via `COPY`.
-- [ ] **M5 UI:** single page that picks sensors, metrics, stat and range, then shows a table and a uPlot chart.
+- [ ] **M5 UI:** single page that picks sensors, metrics, stat and range, then shows a results table and simple per-metric bar comparison.
 - [ ] **M6 Perf:** k6 ingest (single vs batch) and query (1 day vs 31 days) scenarios; worker-count
       and data-volume sweeps; results table in `perf/README.md`.
 - [ ] **M7 Docs:** README with run instructions, assumptions, architecture, limitations and next steps.
@@ -192,10 +195,11 @@ Cut unless time allows: a live simulator (a small loop posting to the API).
   assert on the test's own sensors being present with the right values.
 - Real Postgres behind the API: aggregation and constraint behavior is where bugs live, and
   SQLite would hide them.
-- Key cases: duplicate ingest is a no-op (`duplicates` count); empty range returns null and
-  count 0; range validation edges (exactly 1 day, 31 days, too short, too long, inverted,
-  naive timestamps, defaults); all four stats on known values; multiple sensors and metrics;
-  all-sensors query; NaN/inf and bad name rejection; batch size limit; future timestamps.
+- Key cases: duplicate ingest is a no-op (`duplicates` count, including intra-batch duplicates);
+  empty range returns empty `results`; range validation edges (exactly 1 day, 31 days, too short,
+  too long, inverted, half-open `[start, end)` bounds, naive timestamps, defaults); all four stats
+  on known values; multiple sensors and metrics; all-sensors query; NaN/inf, empty `metrics`, and
+  bad name rejection; batch reading/point limits; future timestamps.
 - Unit tests (`tests/unit/`) only for pure logic such as range resolution. These run in
   pre-commit; the black-box suite needs the stack up.
 
