@@ -8,10 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from app.config import Settings
 
-# Per worker process: WORKERS * (POOL_SIZE + MAX_OVERFLOW) must stay below
-# Postgres max_connections (100).
-POOL_SIZE = 5
-MAX_OVERFLOW = 5
+# Library defaults unless there's a reason. The pool keeps SQLAlchemy's 5 + 10 overflow per
+# worker process, so WORKERS * 15 must stay below Postgres max_connections (100).
+# Fail fast instead of the defaults' 30 s pool wait and 60 s connect wait.
 POOL_TIMEOUT = timedelta(seconds=5)
 CONNECT_TIMEOUT = timedelta(seconds=5)
 
@@ -32,8 +31,6 @@ def _ms(td: timedelta) -> str:
 def create_engine(settings: Settings) -> AsyncEngine:
     return create_async_engine(
         settings.database_url,
-        pool_size=POOL_SIZE,
-        max_overflow=MAX_OVERFLOW,
         pool_timeout=POOL_TIMEOUT.total_seconds(),
         pool_pre_ping=True,
         connect_args={
