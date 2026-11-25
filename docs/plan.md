@@ -20,10 +20,10 @@ aggregate queries (min / max / sum / avg) over a time range.
 |---|---|
 | Runtime / packaging | Python 3.13, `uv` |
 | API | FastAPI, Pydantic v2, fully async |
-| DB access | SQLAlchemy 2.0 async + asyncpg, Alembic migrations |
+| DB access | SQLAlchemy 2.0 Core (async) + asyncpg, Alembic migrations |
 | Database | Plain Postgres 17 (pinned image), single unpartitioned table, Docker Compose |
-| UI | Single static page: Alpine.js, served by FastAPI |
-| Tests | pytest + httpx: black-box over HTTP against the running stack, plus unit tests |
+| UI | Single static page: Alpine.js (pinned CDN version), served by FastAPI |
+| Tests | pytest + sync `httpx.Client`: black-box over HTTP against the running stack, plus unit tests |
 | Load test | k6 (Docker) |
 | Quality gates | ruff (lint + format), ty, pre-commit |
 | Agent docs | `AGENTS.md` only (references the FastAPI skill) |
@@ -137,9 +137,10 @@ A single `SELECT sensor_id, metric, <agg>(value), count(*) ... GROUP BY sensor_i
 - One async engine per worker process, pool sized via settings, created and disposed
   in the lifespan handler.
 - Constraint: `workers × (pool_size + max_overflow) < postgres max_connections`.
-- Session per request via dependency, and the transaction commits before the response.
+- Connection per request via dependency (`engine.begin()`), and the transaction commits before the response.
 - Settings via `pydantic-settings` (env vars), documented in `.env.example`.
-- Run with `fastapi run --workers $WORKERS`.
+- Run with `fastapi run --workers $WORKERS`; Alembic migrations run as a one-shot `migrate`
+  service before `api` starts (never inside worker lifespan).
 
 ## Repository layout
 
@@ -150,7 +151,7 @@ static/         index.html, app.js (Alpine.js)
 scripts/        seed.py (bulk COPY of synthetic data)
 tests/          blackbox/ (HTTP-only contract tests), unit/ (pure logic)
 perf/           k6 scripts: ingest.js, query.js + results write-up
-compose.yaml    db, api (+ test db / k6 via profiles)
+compose.yaml    db, migrate (one-shot), api (+ k6 via profile)
 AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
 ```
 
