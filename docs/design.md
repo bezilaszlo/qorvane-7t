@@ -1,7 +1,6 @@
 # Design
 
-How the service is built and why. The original plan and assumptions are in [plan.md](plan.md);
-measurements are in [performance.md](performance.md).
+How the service is built and why. Measurements are in [performance.md](performance.md).
 
 ![Prototype architecture](diagrams/architecture.svg)
 
@@ -12,6 +11,30 @@ measurements are in [performance.md](performance.md).
   under [next steps](#next-steps), each tied to what would trigger it.
 - **Durable before acknowledged.** A write is acknowledged only after the database commit.
 - **Idempotent ingest.** Clients retry; a duplicate reading is a no-op.
+
+## Assumptions
+
+Decisions that fill gaps in the brief.
+
+1. **Sensors and metrics are implicit.** They exist once a reading arrives; there's no
+   registration step. Metric names are an open set validated by `^[a-z][a-z0-9_]{0,31}$`;
+   sensor ids allow hyphens and longer values (`^[a-z0-9][a-z0-9_-]{0,63}$`). One implicit unit per metric.
+2. **Timestamps** must carry a timezone (ISO 8601) and are stored in UTC. If omitted
+   at ingest, the server time is used. Readings more than 5 minutes in the future are rejected.
+3. **Date range** is half-open `[start, end)` and must be between 1 day (24h) and 31 days ("one month"), with `start < end`.
+   Out-of-range requests get 422 and are never clamped. If no range is given, it's the last 24 hours. If only
+   `end` is given, `start = end - 24h`; if only `start`, `end = now`.
+4. **One statistic per query**, applied to every requested metric.
+5. **Results are per sensor and metric.** An aggregate across sensors is a possible
+   extension.
+6. **Unknown sensors, unknown metrics, or no data in range** produce no rows (`results: []`),
+   not 404 or null placeholders, matching `GROUP BY` (every returned row has `count >= 1`, so
+   we never divide by zero).
+7. **Duplicates**: same `(sensor_id, metric, ts)` is treated as a retry (including duplicates
+   within the same batch); the first write wins (`ON CONFLICT DO NOTHING`). The response reports
+   how many `(sensor_id, metric, ts)` points were inserted and how many were duplicates.
+8. Values must be finite floats (NaN/inf rejected).
+9. No authentication (out of scope for the PoC).
 
 ## Data model
 

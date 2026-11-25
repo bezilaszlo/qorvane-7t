@@ -56,7 +56,7 @@ A few rules worth knowing:
 - A query covers 1 to 31 days. Leave out the dates to get the last 24 hours.
 - Unknown sensors or empty periods return an empty result, not an error.
 
-The full list of assumptions is in [docs/plan.md](docs/plan.md).
+The full list of assumptions is in [docs/design.md](docs/design.md#assumptions).
 
 ## Tests
 
@@ -79,7 +79,6 @@ implementation. Linting, type checks and unit tests also run as pre-commit hooks
 
 - [Design](docs/design.md): how it works, technical decisions, limitations and next steps
 - [Performance](docs/performance.md): load tests and what one API pod can handle
-- [Plan](docs/plan.md): the original plan, assumptions and milestones
 - Diagrams: [architecture](docs/diagrams/architecture.svg) and the
   [production target data flow](docs/diagrams/dataflow.svg)
 
@@ -92,5 +91,5 @@ static/    the web page
 scripts/   synthetic data generator
 tests/     unit, integration (real Postgres) and contract (blackbox/) tests
 perf/      load test scripts
-docs/      design, performance, plan, diagrams
+docs/      design, performance, diagrams
 ```
