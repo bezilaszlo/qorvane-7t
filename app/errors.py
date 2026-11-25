@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 MAX_ECHO_CHARS = 200
 UNAVAILABLE = {"detail": "database unavailable"}
+QUERY_CANCELED = "57014"
+LOCK_NOT_AVAILABLE = "55P03"
+BUSY_DETAILS = {QUERY_CANCELED: "query timed out", LOCK_NOT_AVAILABLE: "database busy"}
 
 
 def validation_error(loc: tuple[str, ...], msg: str, type_: str) -> RequestValidationError:
@@ -59,6 +62,9 @@ def _sqlstate(exc: Exception) -> str:
 
 
 async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    if busy := BUSY_DETAILS.get(_sqlstate(exc)):
+        logger.warning("database timeout (%s): %r", busy, exc)
+        return JSONResponse(status_code=503, content={"detail": busy})
     if isinstance(exc, SQLAlchemyError) and _is_connection_failure(exc):
         logger.warning("database unavailable: %r", exc)
         return JSONResponse(status_code=503, content=UNAVAILABLE)

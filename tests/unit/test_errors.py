@@ -8,7 +8,7 @@ from pydantic import BaseModel, model_validator
 from sqlalchemy.exc import DataError, DBAPIError, IntegrityError, InterfaceError, OperationalError
 from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 
-from app.db import ConnDep
+from app.db import ConnDep, ReadConnDep
 from app.errors import register_handlers
 
 
@@ -128,3 +128,73 @@ class FakeAsyncpgError(Exception):
 def test_generic_dbapi_error_with_data_exception_sqlstate_is_422():
     exc = DBAPIError("stmt", {}, FakeAsyncpgError("overflow"))
     assert make_client(FakeEngine(), raised=exc).post("/write").status_code == 422
+
+
+class FakeCanceled(Exception):
+    sqlstate = "57014"
+
+
+class FakeLockTimeout(Exception):
+    sqlstate = "55P03"
+
+
+@pytest.mark.parametrize(
+    ("sqlstate_cls", "detail"),
+    [(FakeCanceled, "query timed out"), (FakeLockTimeout, "database busy")],
+    ids=["statement-timeout", "lock-timeout"],
+)
+@pytest.mark.parametrize("wrapper", [DBAPIError, OperationalError], ids=["dbapi", "operational"])
+def test_timeouts_are_503_with_generic_detail(sqlstate_cls, detail, wrapper):
+    exc = wrapper("SELECT secret", {}, sqlstate_cls("canceling statement"))
+    response = make_client(FakeEngine(), raised=exc).post("/write")
+    assert response.status_code == 503
+    assert response.json() == {"detail": detail}
+
+
+class FakeReadConn:
+    def __init__(self):
+        self.options: dict = {}
+
+    async def execution_options(self, **options):
+        self.options = options
+        return self
+
+
+class FakeReadEngine:
+    def __init__(self, enter: Exception | None = None):
+        self.enter, self.conn, self.began = enter, FakeReadConn(), False
+
+    @asynccontextmanager
+    async def connect(self) -> AsyncGenerator[FakeReadConn]:
+        if self.enter:
+            raise self.enter
+        yield self.conn
+
+    def begin(self):
+        self.began = True
+        raise AssertionError("reads must not open a transaction")
+
+
+def make_read_client(engine: FakeReadEngine) -> TestClient:
+    app = FastAPI()
+    register_handlers(app)
+    app.state.engine = engine
+
+    @app.get("/read")
+    async def read(conn: ReadConnDep) -> dict[str, str]:
+        return {"status": "ok"}
+
+    return TestClient(app)
+
+
+def test_read_dependency_uses_autocommit_without_transaction():
+    engine = FakeReadEngine()
+    assert make_read_client(engine).get("/read").status_code == 200
+    assert engine.conn.options == {"isolation_level": "AUTOCOMMIT"}
+    assert not engine.began
+
+
+def test_read_dependency_connect_failure_is_503():
+    response = make_read_client(FakeReadEngine(enter=ConnectionRefusedError())).get("/read")
+    assert response.status_code == 503
+    assert response.json() == {"detail": "database unavailable"}

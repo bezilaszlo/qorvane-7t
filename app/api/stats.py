@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query
 from pydantic import AwareDatetime
 from sqlalchemy import func, select
 
-from app.db import ConnDep
+from app.db import ReadConnDep
 from app.errors import validation_error
 from app.models import readings
 from app.ranges import RangeError, resolve_range
@@ -18,7 +18,7 @@ AGGREGATES = {"min": func.min, "max": func.max, "sum": func.sum, "avg": func.avg
 
 @router.get("/stats")
 async def get_stats(
-    conn: ConnDep,
+    conn: ReadConnDep,
     metric: Annotated[list[Metric], Query(min_length=1)],
     stat: Stat,
     sensor_id: Annotated[list[SensorId] | None, Query()] = None,

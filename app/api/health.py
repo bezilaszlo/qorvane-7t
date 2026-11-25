@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from sqlalchemy import text
 
-from app.db import ConnDep
+from app.db import ReadConnDep
 
 router = APIRouter(tags=["health"])
 
@@ -12,6 +12,6 @@ async def health() -> dict[str, str]:
 
 
 @router.get("/ready")
-async def ready(conn: ConnDep) -> dict[str, str]:
+async def ready(conn: ReadConnDep) -> dict[str, str]:
     await conn.execute(text("SELECT 1"))
     return {"status": "ready"}
