@@ -26,7 +26,6 @@ aggregate queries (min / max / sum / avg) over a time range.
 | Tests | pytest + sync `httpx.Client`: black-box over HTTP against the running stack, plus unit tests |
 | Load test | k6 (Docker) |
 | Quality gates | ruff (lint + format), ty, pre-commit |
-| Agent docs | `AGENTS.md` only (references the FastAPI skill) |
 
 ## Assumptions
 
@@ -159,13 +158,13 @@ AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
 
 ## Milestones
 
-Red/green order: the stack runs first, then the black-box tests are written against the API
-contract and fail, then the implementation makes them pass. One commit per milestone.
+Order: the stack runs first, then the black-box tests are written against the API contract and
+fail, then the implementation makes them pass.
 
 - [x] **M1 Skeleton:** `docker compose up` starts the whole stack (Postgres + migrations + API
       serving the static UI). uv project, ruff, ty, pre-commit, config, async DB wiring, Alembic
       migration for `readings`, working `/health` and `/ready`. Core endpoints exist with their
-      request/response schemas but return `501 Not Implemented`. `AGENTS.md`. No core logic.
+      request/response schemas but return `501 Not Implemented`. No core logic.
 - [x] **M2 Black-box test harness (red):** pytest suite that talks to the running API over HTTP
       only (see Testing). It covers the ingest and query contract and the assumptions above. It
       runs against the compose stack, and every core test fails against the 501 stubs.
@@ -173,20 +172,20 @@ contract and fail, then the implementation makes them pass. One commit per miles
       and query (range resolution, SQL aggregates, empty results) until the suite passes.
       Range resolution also gets plain unit tests.
 - [x] **M4 Data:** seed script (N sensors × 30 days, daily sine + noise, several metrics) via `COPY`.
-- [x] **M5 UI:** single page that picks sensors, metrics, stat and range, then shows a results table and simple per-metric bar comparison.
+- [x] **M5 UI:** single page for non-technical viewers: per-station cards with units, a plain-language
+      summary, a day-by-day chart (one `/stats` call per day) and a station comparison.
 - [x] **M6 Perf:** k6 ingest (single vs batch) and query (1 day vs 31 days) scenarios; worker-count
       and data-volume sweeps; results in `docs/performance.md`.
-- [x] **M7 Docs:** README with run instructions, assumptions, architecture, limitations and next steps.
+- [x] **M7 Docs:** README (introduction, how to run), `docs/design.md` (decisions, limitations,
+      next steps), `docs/performance.md` (load tests).
 
 Cut unless time allows: a live simulator (a small loop posting to the API).
 
-### Way of working
+### Rules
 
-- Milestones are delegated to subagents with a written brief. The orchestrator reviews each
-  diff before it is committed, and an independent reviewer checks the riskier ones (M3).
-- The test suite is the contract: M3 may not change M2 tests to make them pass. A test
-  change needs a stated reason (a test bug or a deliberate contract change recorded here).
-- Pre-commit (ruff, ty, unit tests) is the fast verification loop for humans and agents alike.
+- The test suite is the contract: the implementation may not change tests to make them pass. A
+  test change needs a stated reason (a test bug or a deliberate contract change recorded here).
+- Pre-commit (ruff, ty, unit tests) is the fast verification loop.
 
 ## Testing
 

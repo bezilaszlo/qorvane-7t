@@ -94,10 +94,3 @@ tests/     contract tests (blackbox/) and unit tests (unit/)
 perf/      load test scripts
 docs/      design, performance, plan, diagrams
 ```
-
-## How it was built
-
-It was planned first ([docs/plan.md](docs/plan.md)), then built in steps: a running skeleton,
-failing contract tests, the implementation, an independent code review, and fixes. AI coding agents
-did much of the typing under that plan, with every step reviewed before it was committed; the
-design decisions are mine and are recorded in the docs.
