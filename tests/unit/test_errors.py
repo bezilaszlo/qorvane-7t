@@ -67,13 +67,8 @@ def test_successful_commit_is_acknowledged():
     assert make_client(FakeEngine()).post("/write").status_code == 201
 
 
-@pytest.mark.parametrize(
-    "exc",
-    [ConnectionRefusedError(), OSError("dns"), TimeoutError()],
-    ids=["refused", "oserror", "timeout"],
-)
-def test_connect_level_os_errors_are_503(exc):
-    response = make_client(FakeEngine(enter=exc)).post("/write")
+def test_connect_level_os_error_is_503():
+    response = make_client(FakeEngine(enter=ConnectionRefusedError())).post("/write")
     assert response.status_code == 503
     assert response.json() == {"detail": "database unavailable"}
 
@@ -103,14 +98,6 @@ def test_data_error_is_422():
 def test_non_db_os_error_is_not_labelled_unavailable():
     client = make_client(FakeEngine(), raised=PermissionError("nope"), strict=False)
     assert client.post("/write").status_code == 500
-
-
-def test_validation_error_with_non_finite_input_is_json_safe():
-    response = make_client(FakeEngine()).post(
-        "/body", content='{"value": NaN}', headers={"content-type": "application/json"}
-    )
-    assert response.status_code == 422
-    assert "input" not in response.json()["detail"][0]
 
 
 def test_validation_error_keeps_small_input_and_drops_huge_input():

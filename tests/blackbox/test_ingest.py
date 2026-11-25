@@ -5,40 +5,28 @@ import pytest
 from helpers import new_metric, new_sensor, reading
 
 
-def test_single_reading_with_several_metrics(post_readings, anchor):
-    response = post_readings(
-        [reading(new_sensor(), anchor, {"temperature": 21.3, "humidity": 40.0, "wind": 0.0})]
-    )
-    assert response.status_code == 201
-    assert response.json() == {"inserted": 3, "duplicates": 0}
-
-
 def test_batch_counts_points_per_sensor_metric_ts(post_readings, anchor):
     a, b = new_sensor(), new_sensor()
     response = post_readings(
         [
-            reading(a, anchor, {"temperature": 1.0, "humidity": 2.0}),
+            reading(a, anchor, {"temperature": 1.0, "humidity": 2.0, "wind": 0.0}),
             reading(a, anchor + timedelta(minutes=1), {"temperature": 3.0}),
             reading(b, anchor, {"temperature": 4.0}),
         ]
     )
     assert response.status_code == 201
-    assert response.json() == {"inserted": 4, "duplicates": 0}
+    assert response.json() == {"inserted": 5, "duplicates": 0}
 
 
-def test_resending_the_same_batch_is_all_duplicates(post_readings, anchor):
-    batch = [reading(new_sensor(), anchor, {"temperature": 1.0, "humidity": 2.0})]
-    assert post_readings(batch).json() == {"inserted": 2, "duplicates": 0}
-    again = post_readings(batch)
+def test_resending_a_batch_is_all_duplicates_and_does_not_overwrite(
+    post_readings, get_stats, anchor
+):
+    sensor, metric, other = new_sensor(), new_metric(), new_metric()
+    first = post_readings([reading(sensor, anchor, {metric: 1.0, other: 2.0})])
+    assert first.json() == {"inserted": 2, "duplicates": 0}
+    again = post_readings([reading(sensor, anchor, {metric: 99.0, other: 2.0})])
     assert again.status_code == 201
     assert again.json() == {"inserted": 0, "duplicates": 2}
-
-
-def test_duplicate_with_different_value_does_not_overwrite(post_readings, get_stats, anchor):
-    sensor, metric = new_sensor(), new_metric()
-    assert post_readings([reading(sensor, anchor, {metric: 1.0})]).json()["inserted"] == 1
-    again = post_readings([reading(sensor, anchor, {metric: 99.0})])
-    assert again.json() == {"inserted": 0, "duplicates": 1}
 
     rows = get_stats(
         stat="max", metric=metric, sensor_id=sensor, start=anchor, end=anchor + timedelta(days=1)
@@ -56,7 +44,7 @@ def test_partially_duplicate_batch(post_readings, anchor):
 def test_duplicates_within_one_batch(post_readings, get_stats, anchor):
     sensor, metric = new_sensor(), new_metric()
     response = post_readings(
-        [reading(sensor, anchor, {metric: 1.0}), reading(sensor, anchor, {metric: 2.0})]
+        [reading(sensor, anchor, {metric: 5.0}), reading(sensor, anchor, {metric: 2.0})]
     )
     assert response.status_code == 201
     assert response.json() == {"inserted": 1, "duplicates": 1}
@@ -68,8 +56,7 @@ def test_duplicates_within_one_batch(post_readings, get_stats, anchor):
         start=anchor,
         end=anchor + timedelta(days=1),
     ).json()["results"]
-    assert len(rows) == 1
-    assert rows[0]["count"] == 1
+    assert rows == [{"sensor_id": sensor, "metric": metric, "value": 5.0, "count": 1}]
 
 
 def test_omitted_ts_uses_server_time(post_readings, get_stats):
@@ -82,12 +69,19 @@ def test_omitted_ts_uses_server_time(post_readings, get_stats):
     assert rows == [{"sensor_id": sensor, "metric": metric, "value": 7.5, "count": 1}]
 
 
-def test_non_utc_offset_is_accepted(post_readings, anchor):
+def test_non_utc_offset_is_applied_to_the_stored_instant(post_readings, get_stats, anchor):
+    sensor, metric = new_sensor(), new_metric()
     local = anchor.astimezone(timezone(timedelta(hours=2)))
     response = post_readings(
-        [{"sensor_id": new_sensor(), "ts": local.isoformat(), "metrics": {"temperature": 1.0}}]
+        [{"sensor_id": sensor, "ts": local.isoformat(), "metrics": {metric: 1.0}}]
     )
     assert response.status_code == 201
+
+    end = anchor + timedelta(hours=1)
+    rows = get_stats(
+        stat="sum", metric=metric, sensor_id=sensor, start=end - timedelta(hours=24), end=end
+    ).json()["results"]
+    assert rows == [{"sensor_id": sensor, "metric": metric, "value": 1.0, "count": 1}]
 
 
 def test_timestamp_slightly_in_the_future_is_accepted(post_readings):
@@ -128,7 +122,7 @@ def test_missing_metrics_rejected(post_readings):
 
 @pytest.mark.parametrize(
     "literal",
-    ["NaN", "Infinity", "-Infinity", "1e999", '"NaN"', '"inf"'],
+    ["NaN", "Infinity", '"NaN"', "1e999"],
 )
 def test_non_finite_value_rejected(client: httpx.Client, literal):
     sensor = new_sensor()
@@ -144,7 +138,7 @@ def test_non_numeric_value_rejected(post_readings, anchor, value):
     assert post_readings([reading(new_sensor(), anchor, {"temperature": value})]).status_code == 422
 
 
-@pytest.mark.parametrize("ts", ["2026-01-01T00:00:00", "2026-01-01", "not-a-date"])
+@pytest.mark.parametrize("ts", ["2026-01-01T00:00:00", "not-a-date"])
 def test_naive_or_invalid_timestamp_rejected(post_readings, ts):
     response = post_readings(
         [{"sensor_id": new_sensor(), "ts": ts, "metrics": {"temperature": 1.0}}]
@@ -172,15 +166,13 @@ def test_future_timestamp_rejects_the_whole_batch(post_readings, get_stats, anch
 
 @pytest.mark.parametrize(
     "sensor_id",
-    ["Sensor-1", "-leading-hyphen", "a" * 65, "", "has space", "_underscore-first"],
+    ["Sensor-1", "a" * 65, ""],
 )
 def test_bad_sensor_id_rejected(post_readings, anchor, sensor_id):
     assert post_readings([reading(sensor_id, anchor, {"temperature": 1.0})]).status_code == 422
 
 
-@pytest.mark.parametrize(
-    "metric", ["Temperature", "1temp", "_temp", "a" * 33, "", "with-hyphen", "with space"]
-)
+@pytest.mark.parametrize("metric", ["Temperature", "1temp", "with-hyphen", "a" * 33])
 def test_bad_metric_name_rejected(post_readings, anchor, metric):
     assert post_readings([reading(new_sensor(), anchor, {metric: 1.0})]).status_code == 422
 

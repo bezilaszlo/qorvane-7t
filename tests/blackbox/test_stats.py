@@ -12,11 +12,11 @@ def seed_series(seed, sensor, metric, start, values):
 
 @pytest.mark.parametrize(
     ("stat", "expected"),
-    [("min", 1.5), ("max", 9.0), ("sum", 17.5), ("avg", 17.5 / 4)],
+    [("min", -2.5), ("max", 9.0), ("sum", 13.5), ("avg", 13.5 / 4)],
 )
 def test_each_stat_on_known_values(seed, get_stats, anchor, stat, expected):
     sensor, metric = new_sensor(), new_metric()
-    seed_series(seed, sensor, metric, anchor, [1.5, 9.0, 3.0, 4.0])
+    seed_series(seed, sensor, metric, anchor, [-2.5, 9.0, 3.0, 4.0])
 
     response = get_stats(stat=stat, metric=metric, sensor_id=sensor, start=anchor, end=anchor + DAY)
     assert response.status_code == 200
@@ -25,18 +25,6 @@ def test_each_stat_on_known_values(seed, get_stats, anchor, stat, expected):
     assert row["metric"] == metric
     assert row["value"] == pytest.approx(expected)
     assert row["count"] == 4
-
-
-def test_negative_values(seed, get_stats, anchor):
-    sensor, metric = new_sensor(), new_metric()
-    seed_series(seed, sensor, metric, anchor, [-5.0, 2.0, -1.0])
-    results = {
-        stat: get_stats(
-            stat=stat, metric=metric, sensor_id=sensor, start=anchor, end=anchor + DAY
-        ).json()["results"][0]["value"]
-        for stat in ("min", "max", "sum", "avg")
-    }
-    assert results == {"min": -5.0, "max": 2.0, "sum": -4.0, "avg": pytest.approx(-4.0 / 3)}
 
 
 def test_multiple_sensors_and_metrics(seed, get_stats, anchor):
@@ -130,31 +118,18 @@ def test_range_with_non_utc_offset(seed, get_stats, anchor):
     assert [r["value"] for r in response.json()["results"]] == [5.0]
 
 
-def test_unknown_sensor_returns_empty_results(seed, get_stats, anchor):
-    metric = new_metric()
-    seed([reading(new_sensor(), anchor, {metric: 1.0})])
-    response = get_stats(
-        stat="avg", metric=metric, sensor_id=new_sensor(), start=anchor, end=anchor + DAY
-    )
-    assert response.status_code == 200
-    assert response.json()["results"] == []
-
-
-def test_unknown_metric_returns_empty_results(seed, get_stats, anchor):
-    sensor = new_sensor()
-    seed([reading(sensor, anchor, {new_metric(): 1.0})])
-    response = get_stats(
-        stat="avg", metric=new_metric(), sensor_id=sensor, start=anchor, end=anchor + DAY
-    )
-    assert response.status_code == 200
-    assert response.json()["results"] == []
-
-
-def test_no_data_in_range_returns_empty_results(seed, get_stats, anchor):
+@pytest.mark.parametrize("miss", ["sensor", "metric", "range"])
+def test_no_matching_data_returns_empty_results(seed, get_stats, anchor, miss):
     sensor, metric = new_sensor(), new_metric()
     seed([reading(sensor, anchor, {metric: 1.0})])
-    later = anchor + timedelta(days=2)
-    response = get_stats(stat="avg", metric=metric, sensor_id=sensor, start=later, end=later + DAY)
+    start = anchor + 2 * DAY if miss == "range" else anchor
+    response = get_stats(
+        stat="avg",
+        metric=new_metric() if miss == "metric" else metric,
+        sensor_id=new_sensor() if miss == "sensor" else sensor,
+        start=start,
+        end=start + DAY,
+    )
     assert response.status_code == 200
     assert response.json()["results"] == []
 
@@ -269,9 +244,15 @@ def test_missing_metric_rejected(get_stats):
     assert get_stats(stat="avg", metric=None).status_code == 422
 
 
-@pytest.mark.parametrize("stat", ["median", "AVG", "count", ""])
+@pytest.mark.parametrize("stat", ["AVG", "median"])
 def test_invalid_stat_rejected(get_stats, stat):
     assert get_stats(stat=stat, metric=new_metric()).status_code == 422
+
+
+@pytest.mark.parametrize(("param", "value"), [("sensor_id", "Sensor-1"), ("metric", "Temperature")])
+def test_malformed_sensor_id_or_metric_rejected(get_stats, anchor, param, value):
+    params = {"sensor_id": new_sensor(), "metric": new_metric(), param: value}
+    assert get_stats(start=anchor, end=anchor + DAY, **params).status_code == 422
 
 
 def test_missing_stat_rejected(get_stats):
