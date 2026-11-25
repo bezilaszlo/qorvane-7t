@@ -59,10 +59,10 @@
       "type": "database",
       "label": "Raw archive",
       "sublabel": "S3 / Parquet",
-      "stage": 3,
+      "stage": 2,
       "row": 0,
       "tag": "immutable",
-      "explanation": "Immutable copy of every raw reading. Any derived store can be rebuilt from it."
+      "explanation": "Immutable copy of every raw reading, written from the log. Any derived store (TSDB, rollups) can be rebuilt by replaying it."
     },
     {
       "id": "tsdb",
@@ -76,13 +76,13 @@
     },
     {
       "id": "rollups",
-      "type": "backend",
-      "label": "Rollup job",
-      "sublabel": "hourly min/max/sum/count",
+      "type": "database",
+      "label": "Hourly rollups",
+      "sublabel": "min/max/sum/count",
       "stage": 3,
       "row": 2,
       "tag": "derived",
-      "explanation": "Stream or scheduled job producing hourly aggregates so long-range queries read hundreds of rows, not millions. avg = sum / count."
+      "explanation": "Pre-aggregated hourly buckets (continuous aggregates or a rollup table). A 31-day query reads about 744 rows per sensor and metric instead of every raw reading. avg = sum / count."
     },
     {
       "id": "query",
@@ -91,7 +91,7 @@
       "sublabel": "GET /stats",
       "stage": 4,
       "row": 1,
-      "explanation": "Reads hourly rollups for long ranges and raw rows for short or recent ranges. Scales with read replicas and caching."
+      "explanation": "Reads raw rows for short or recent ranges and hourly rollups for long ranges. Scales with read replicas and caching."
     },
     {
       "id": "clients",
@@ -132,36 +132,29 @@
       "variant": "emphasis"
     },
     {
-      "id": "stream",
-      "from": "log",
+      "id": "rollup",
+      "from": "tsdb",
       "to": "rollups",
-      "label": "stream",
+      "label": "hourly rollup",
       "variant": "dashed"
     },
     {
-      "id": "rollup-write",
-      "from": "rollups",
-      "to": "tsdb",
-      "label": "hourly rollups"
-    },
-    {
-      "id": "raw-read",
+      "id": "short-reads",
       "from": "tsdb",
       "to": "query",
-      "label": "range queries"
+      "label": "short ranges"
+    },
+    {
+      "id": "long-reads",
+      "from": "rollups",
+      "to": "query",
+      "label": "long ranges"
     },
     {
       "id": "results",
       "from": "query",
       "to": "clients",
       "label": "JSON stats"
-    },
-    {
-      "id": "replay",
-      "from": "archive",
-      "to": "tsdb",
-      "label": "replay / rebuild",
-      "variant": "dashed"
     }
   ],
   "cards": [
@@ -171,7 +164,7 @@
       "items": [
         "Ack only after a durable append",
         "Log is the system of record; stores are derived",
-        "Raw archive allows full replay"
+        "Raw archive allows replay to rebuild TSDB and rollups"
       ]
     },
     {

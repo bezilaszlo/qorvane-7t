@@ -7,46 +7,191 @@
     "locale": "en",
     "quality_profile": "showcase"
   },
-  "layout": { "mode": "auto" },
   "components": [
-    { "id": "sensors", "type": "external", "label": "Sensors / clients", "sublabel": "HTTP JSON, may retry",
-      "explanation": "Sensors are implicit: they exist once their first reading arrives. Retries are safe because ingest is idempotent on (sensor_id, metric, ts)." },
-    { "id": "ui", "type": "frontend", "label": "Demo UI", "sublabel": "Alpine.js + uPlot",
-      "explanation": "One static page served by FastAPI. Picks sensors, metrics, statistic and range, then renders a table and a chart. No build step." },
-    { "id": "k6", "type": "external", "label": "k6 load test", "sublabel": "ingest + query scenarios",
-      "explanation": "Measures both paths because the workload profile (ingest- vs query-heavy) is unknown." },
-    { "id": "api", "type": "backend", "label": "FastAPI", "sublabel": "async, N uvicorn workers", "tag": "Pydantic v2",
-      "explanation": "Stateless, fully async API. Validates input (tz-aware timestamps, finite values, 1 to 31 day ranges), then acks a write only after the Postgres commit. One asyncpg pool per worker; workers x pool size must stay below max_connections." },
-    { "id": "db", "type": "database", "label": "PostgreSQL 17", "sublabel": "readings table, PK index", "tag": "durable",
-      "explanation": "One narrow table readings(sensor_id, metric, ts, value) with PRIMARY KEY (sensor_id, metric, ts). The key gives idempotent ingest and serves range queries. Unpartitioned on purpose: partitioning and rollups are documented next steps." },
-    { "id": "seed", "type": "backend", "label": "Seed script", "sublabel": "synthetic 30-day data",
-      "explanation": "Bulk-loads N sensors x 30 days of sine-plus-noise data with COPY, for the demo and the data-volume perf sweep." }
+    {
+      "id": "sensors",
+      "type": "external",
+      "label": "Sensors / clients",
+      "sublabel": "HTTP JSON, may retry",
+      "pos": [
+        40,
+        80
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "explanation": "Sensors are implicit: they exist once their first reading arrives. Retries are safe because ingest is idempotent on (sensor_id, metric, ts)."
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Demo UI",
+      "sublabel": "Alpine.js + uPlot",
+      "pos": [
+        40,
+        220
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "explanation": "One static page served by FastAPI. Picks sensors, metrics, statistic and range, then renders a table and a chart. No build step."
+    },
+    {
+      "id": "ingest",
+      "type": "backend",
+      "label": "Ingest route",
+      "sublabel": "POST /readings",
+      "pos": [
+        400,
+        80
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "explanation": "Validates a batch of 1 to 1000 readings (tz-aware timestamps, finite values, metric name pattern), writes it in one INSERT ... ON CONFLICT DO NOTHING, and returns 201 {inserted, duplicates} only after commit. Retries are no-ops."
+    },
+    {
+      "id": "query",
+      "type": "backend",
+      "label": "Query route",
+      "sublabel": "GET /stats",
+      "pos": [
+        400,
+        220
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "explanation": "Resolves the range (default last 24 h, 1 to 31 days), runs one SQL GROUP BY sensor_id, metric with min/max/sum/avg, and returns null with count 0 for an empty range. The same app also serves the static demo UI."
+    },
+    {
+      "id": "db",
+      "type": "database",
+      "label": "PostgreSQL 17",
+      "sublabel": "readings table",
+      "pos": [
+        720,
+        80
+      ],
+      "size": [
+        170,
+        236
+      ],
+      "explanation": "One narrow table readings(sensor_id, metric, ts, value) with PRIMARY KEY (sensor_id, metric, ts). The key gives idempotent ingest and serves range queries. Unpartitioned on purpose: partitioning and rollups are documented next steps."
+    },
+    {
+      "id": "seed",
+      "type": "backend",
+      "label": "Seed script",
+      "sublabel": "synthetic 30-day data",
+      "pos": [
+        1000,
+        166
+      ],
+      "size": [
+        170,
+        64
+      ],
+      "explanation": "Bulk-loads N sensors x 30 days of sine-plus-noise data with COPY, for the demo and the data-volume perf sweep."
+    }
   ],
   "boundaries": [
-    { "kind": "region", "label": "Docker Compose, single node", "wraps": ["api", "db"] }
+    {
+      "kind": "region",
+      "label": "Docker Compose, single node",
+      "wraps": [
+        "ingest",
+        "query",
+        "db"
+      ],
+      "pad": 44
+    },
+    {
+      "kind": "region",
+      "label": "FastAPI app, N async workers",
+      "wraps": [
+        "ingest",
+        "query"
+      ],
+      "pad": 16
+    }
   ],
   "connections": [
-    { "id": "ingest", "from": "sensors", "to": "api", "label": "POST /readings", "variant": "emphasis" },
-    { "id": "query", "from": "ui", "to": "api", "label": "GET /stats" },
-    { "id": "load", "from": "k6", "to": "api", "label": "load", "variant": "dashed" },
-    { "id": "sql", "from": "api", "to": "db", "label": "SQL via asyncpg", "variant": "emphasis" },
-    { "id": "copy", "from": "seed", "to": "db", "label": "COPY", "variant": "dashed" }
+    {
+      "id": "ingest-call",
+      "from": "sensors",
+      "to": "ingest",
+      "label": "POST /readings",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "insert",
+      "from": "ingest",
+      "to": "db",
+      "label": "INSERT, commit",
+      "variant": "emphasis",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "query-call",
+      "from": "ui",
+      "to": "query",
+      "label": "GET /stats",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "aggregate",
+      "from": "query",
+      "to": "db",
+      "label": "SQL aggregate",
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "copy",
+      "from": "seed",
+      "to": "db",
+      "label": "COPY",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "right"
+    }
   ],
   "cards": [
-    { "dot": "emerald", "title": "Ingest path", "items": [
-      "Batch of 1 to 1000 readings, many metrics each",
-      "One INSERT ... ON CONFLICT DO NOTHING per request",
-      "201 {inserted, duplicates} only after commit"
-    ] },
-    { "dot": "cyan", "title": "Query path", "items": [
-      "One SQL GROUP BY sensor_id, metric with min/max/sum/avg",
-      "Range 1 to 31 days, default last 24 h",
-      "Empty range returns value null, count 0"
-    ] },
-    { "dot": "amber", "title": "Known limits", "items": [
-      "Single Postgres node: no replica or failover",
-      "No broker in front: bursts hit the DB directly",
-      "No auth, no rollups; see next steps"
-    ] }
+    {
+      "dot": "emerald",
+      "title": "Write path",
+      "items": [
+        "Batch of 1 to 1000 readings, many metrics each",
+        "One INSERT ... ON CONFLICT DO NOTHING per request",
+        "201 {inserted, duplicates} only after commit"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Read path",
+      "items": [
+        "One SQL GROUP BY sensor_id, metric: min/max/sum/avg",
+        "Range 1 to 31 days, default last 24 h",
+        "Empty range returns value null, count 0"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Known limits",
+      "items": [
+        "Single Postgres node: no replica or failover",
+        "Ingest and query share one process pool; split if k6 shows contention",
+        "No broker, no auth, no rollups: see next steps"
+      ]
+    }
   ]
 }
