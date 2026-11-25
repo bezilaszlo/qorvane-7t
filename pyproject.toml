@@ -36,6 +36,7 @@ select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = ["blackbox: HTTP contract tests against the running stack"]
 
 [tool.ty.environment]
 python-version = "3.13"
