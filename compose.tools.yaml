@@ -1,0 +1,25 @@
+# Optional tools, layered on compose.yaml: docker compose -f compose.yaml -f compose.tools.yaml run ...
+# Used through `make seed`, `make perf-ingest` and `make perf-query`.
+services:
+  seed:
+    build: .
+    entrypoint: ["python", "scripts/seed.py"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/sensors
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
+  k6:
+    image: grafana/k6:1.5.0
+    entrypoint: ["k6"]
+    volumes:
+      - ./perf:/perf:ro
+    environment:
+      BASE_URL: http://api:8000
+      DURATION: ${DURATION:-30s}
+      VUS: ${VUS:-16}
+    depends_on:
+      api:
+        condition: service_healthy

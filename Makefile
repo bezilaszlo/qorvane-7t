@@ -1,6 +1,7 @@
 .PHONY: up down test test-blackbox lint seed perf-ingest perf-query
 
 SEED_ARGS ?= --sensors 10 --days 30
+TOOLS = docker compose -f compose.yaml -f compose.tools.yaml
 
 up:
 	docker compose up --build -d
@@ -18,10 +19,10 @@ lint:
 	uv run ruff check && uv run ruff format --check && uv run ty check
 
 seed:
-	docker compose --profile tools run --rm seed $(SEED_ARGS)
+	$(TOOLS) run --rm seed $(SEED_ARGS)
 
 perf-ingest:
-	docker compose --profile perf run --rm k6 run /perf/ingest.js
+	$(TOOLS) run --rm k6 run /perf/ingest.js
 
 perf-query:
-	docker compose --profile perf run --rm k6 run /perf/query.js
+	$(TOOLS) run --rm k6 run /perf/query.js

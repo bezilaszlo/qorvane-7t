@@ -1,23 +1,18 @@
+# The app: database, one-shot migrations, API. Optional tools (seed, k6) are in compose.tools.yaml.
 x-app-env: &app-env
-  DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-sensors}
-  WORKERS: ${WORKERS:-2}
-  DB_POOL_SIZE: ${DB_POOL_SIZE:-5}
-  DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-5}
-  DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-5000}
-  DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${DB_IDLE_IN_TRANSACTION_TIMEOUT_MS:-10000}
-  DB_LOCK_TIMEOUT_MS: ${DB_LOCK_TIMEOUT_MS:-2000}
+  DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/sensors
 
 services:
   db:
     image: postgres:17.12-trixie
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-sensors}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sensors
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sensors"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -33,7 +28,9 @@ services:
 
   api:
     build: .
-    environment: *app-env
+    environment:
+      <<: *app-env
+      WORKERS: 2 # API processes; one per CPU core available to the container
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -44,30 +41,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
-
-  seed:
-    build: .
-    profiles: ["tools"]
-    entrypoint: ["python", "scripts/seed.py"]
-    environment: *app-env
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    restart: "no"
-
-  k6:
-    image: grafana/k6:1.5.0
-    profiles: ["perf"]
-    entrypoint: ["k6"]
-    volumes:
-      - ./perf:/perf:ro
-    environment:
-      BASE_URL: http://api:8000
-      DURATION: ${DURATION:-30s}
-      VUS: ${VUS:-16}
-    depends_on:
-      api:
-        condition: service_healthy
 
 volumes:
   pgdata:
