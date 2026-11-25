@@ -3,12 +3,107 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
     <title>Weather sensor metrics</title>
+    <link rel="stylesheet" href="/static/style.css" />
     <script defer src="/static/app.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.5/dist/cdn.min.js"></script>
   </head>
   <body x-data="app()">
-    <h1>Weather sensor metrics</h1>
-    <p x-text="message"></p>
+    <main>
+      <h1>Weather sensor metrics</h1>
+
+      <form class="panel" @submit.prevent="run()">
+        <fieldset>
+          <legend>Sensors <small x-text="selSensors.length ? selSensors.length + ' selected' : 'none selected = all'"></small></legend>
+          <div class="chips">
+            <template x-for="s in sensors" :key="s">
+              <label class="chip"><input type="checkbox" :value="s" x-model="selSensors" /><span x-text="s"></span></label>
+            </template>
+            <span class="muted" x-show="!sensors.length">No sensors with data in the last 24 h.</span>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Metrics <small>at least one</small></legend>
+          <div class="chips">
+            <template x-for="m in metrics" :key="m">
+              <label class="chip"><input type="checkbox" :value="m" x-model="selMetrics" /><span x-text="m"></span></label>
+            </template>
+          </div>
+        </fieldset>
+
+        <div class="row">
+          <label>Statistic
+            <select x-model="stat">
+              <option>min</option><option>max</option><option>sum</option><option>avg</option>
+            </select>
+          </label>
+          <label>Start <input type="datetime-local" x-model="start" @input="clearPreset()" /></label>
+          <label>End <input type="datetime-local" x-model="end" @input="clearPreset()" /></label>
+        </div>
+
+        <div class="row">
+          <button type="button" class="ghost" :class="{ on: preset === '24h' }" @click="setPreset('24h')">Last 24 h</button>
+          <button type="button" class="ghost" :class="{ on: preset === '7d' }" @click="setPreset('7d')">Last 7 days</button>
+          <button type="button" class="ghost" :class="{ on: preset === '30d' }" @click="setPreset('30d')">Last 30 days</button>
+          <button type="submit" :disabled="loading" x-text="loading ? 'Loading…' : 'Run query'"></button>
+        </div>
+        <p class="muted">Empty start/end = last 24 h. Range must be 1 to 31 days.</p>
+      </form>
+
+      <div class="alert" role="alert" x-show="errors.length" x-cloak>
+        <ul><template x-for="e in errors"><li x-text="e"></li></template></ul>
+      </div>
+
+      <section x-show="result" x-cloak>
+        <p class="muted">
+          <strong x-text="result && result.stat"></strong> from
+          <span x-text="result && fmtTs(result.start)"></span> to
+          <span x-text="result && fmtTs(result.end)"></span>
+        </p>
+
+        <p class="empty" x-show="result && !result.results.length">No data in range.</p>
+
+        <div x-show="result && result.results.length">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Sensor</th><th>Metric</th><th class="num">Value</th><th class="num">Count</th></tr></thead>
+              <tbody>
+                <template x-for="r in sortedResults()" :key="r.sensor_id + '/' + r.metric">
+                  <tr><td x-text="r.sensor_id"></td><td x-text="r.metric"></td><td class="num" x-text="fmt(r.value)"></td><td class="num" x-text="r.count"></td></tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <h2>Comparison by metric</h2>
+          <template x-for="g in groups()" :key="g.metric">
+            <div class="group">
+              <h3 x-text="g.metric"></h3>
+              <template x-for="r in g.rows" :key="r.sensor_id">
+                <div class="bar-row">
+                  <span class="bar-label" x-text="r.sensor_id"></span>
+                  <span class="bar-track"><span class="bar" :class="{ neg: r.value < 0 }" :style="{ width: r.pct + '%' }"></span></span>
+                  <span class="bar-value" x-text="fmt(r.value)"></span>
+                </div>
+              </template>
+            </div>
+          </template>
+          <p class="muted">Bars are scaled within each metric by absolute value; red bars are negative.</p>
+        </div>
+      </section>
+
+      <details class="panel">
+        <summary>Send a test reading</summary>
+        <form class="row" @submit.prevent="sendTest()">
+          <label>Sensor id <input x-model="test.sensor_id" required pattern="[a-z0-9][a-z0-9_\-]{0,63}" placeholder="sensor-1" /></label>
+          <label>Metric <input x-model="test.metric" required pattern="[a-z][a-z0-9_]{0,31}" placeholder="temperature" /></label>
+          <label>Value <input x-model="test.value" required inputmode="decimal" placeholder="21.5" /></label>
+          <button type="submit">Send</button>
+        </form>
+        <p :class="testOk ? 'muted' : 'err'" x-text="testMsg"></p>
+      </details>
+    </main>
   </body>
 </html>
