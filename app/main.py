@@ -2,14 +2,14 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy.exc import SQLAlchemyError
 
 from app.api import health, readings, sensors, stats
 from app.config import get_settings
 from app.db import create_engine
+from app.errors import register_handlers
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
@@ -27,13 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 app = FastAPI(title="Weather sensor metrics", version="0.1.0", lifespan=lifespan)
 
 
-@app.exception_handler(SQLAlchemyError)
-@app.exception_handler(OSError)
-@app.exception_handler(TimeoutError)
-async def database_unavailable(request: Request, exc: Exception) -> JSONResponse:
-    return JSONResponse(status_code=503, content={"detail": "database unavailable"})
-
-
+register_handlers(app)
 app.include_router(health.router)
 app.include_router(readings.router)
 app.include_router(stats.router)
