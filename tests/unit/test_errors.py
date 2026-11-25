@@ -47,6 +47,12 @@ def make_client(
             raise raised
         return {"status": "created"}
 
+    @app.get("/read")
+    async def read() -> dict[str, str]:
+        if raised:
+            raise raised
+        return {"status": "ok"}
+
     @app.post("/body")
     async def body(payload: Body) -> None: ...
 
@@ -89,10 +95,17 @@ def test_other_db_errors_are_generic_500():
     assert response.json() == {"detail": "internal server error"}
 
 
-def test_data_error_is_422():
-    response = make_client(FakeEngine(), raised=db_error(DataError)).post("/write")
+@pytest.mark.parametrize(
+    ("method", "path", "expected_loc"),
+    [("POST", "/write", ["body"]), ("GET", "/read", ["query"])],
+    ids=["post-body", "get-query"],
+)
+def test_data_error_is_422(method, path, expected_loc):
+    response = make_client(FakeEngine(), raised=db_error(DataError)).request(method, path)
     assert response.status_code == 422
-    assert response.json()["detail"][0]["msg"] == "numeric value out of range"
+    err = response.json()["detail"][0]
+    assert err["msg"] == "numeric value out of range"
+    assert err["loc"] == expected_loc
 
 
 def test_non_db_os_error_is_not_labelled_unavailable():

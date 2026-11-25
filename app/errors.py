@@ -69,7 +69,8 @@ async def database_error_handler(request: Request, exc: Exception) -> JSONRespon
         logger.warning("database unavailable: %r", exc)
         return JSONResponse(status_code=503, content=UNAVAILABLE)
     if isinstance(exc, DataError) or _sqlstate(exc).startswith("22"):
-        detail = [{"type": "value_error", "loc": ["query"], "msg": "numeric value out of range"}]
+        loc = ["body"] if request.method in {"POST", "PUT", "PATCH"} else ["query"]
+        detail = [{"type": "value_error", "loc": loc, "msg": "numeric value out of range"}]
         return JSONResponse(status_code=422, content={"detail": detail})
     logger.error("unhandled database error", exc_info=exc)
     return JSONResponse(status_code=500, content={"detail": "internal server error"})
