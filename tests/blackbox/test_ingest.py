@@ -109,7 +109,9 @@ def test_too_many_readings_rejected(post_readings, anchor):
 def test_too_many_points_rejected(post_readings, anchor):
     metrics = {f"{new_metric()}_{i}": 1.0 for i in range(11)}
     batch = [reading(new_sensor(), anchor, metrics) for _ in range(1000)]
-    assert post_readings(batch).status_code == 422
+    response = post_readings(batch)
+    assert response.status_code == 422
+    assert all("input" not in item for item in response.json()["detail"])
 
 
 def test_empty_metrics_rejected(post_readings, anchor):

@@ -1,4 +1,4 @@
-.PHONY: up down test test-blackbox lint seed perf-ingest perf-query
+.PHONY: up down test test-integration test-blackbox lint seed perf-ingest perf-query
 
 SEED_ARGS ?= --sensors 10 --days 30
 TOOLS = docker compose -f compose.yaml -f compose.tools.yaml
@@ -11,6 +11,9 @@ down:
 
 test:
 	uv run pytest tests/unit -q
+
+test-integration:
+	uv run pytest tests/integration -q
 
 test-blackbox:
 	uv run pytest tests/blackbox -q
