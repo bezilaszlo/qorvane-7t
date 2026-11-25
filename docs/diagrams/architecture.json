@@ -3,7 +3,7 @@
   "diagram_type": "architecture",
   "meta": {
     "title": "Weather Metrics Service: Prototype Architecture",
-    "output": "docs/diagrams/architecture.html",
+    "output": "docs/internal/architecture.html",
     "locale": "en",
     "quality_profile": "showcase"
   },

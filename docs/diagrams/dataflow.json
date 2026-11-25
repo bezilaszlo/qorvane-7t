@@ -3,7 +3,7 @@
   "diagram_type": "dataflow",
   "meta": {
     "title": "Weather Metrics: Production Target Data Flow",
-    "output": "docs/diagrams/dataflow.html",
+    "output": "docs/internal/dataflow.html",
     "locale": "en",
     "quality_profile": "showcase"
   },
