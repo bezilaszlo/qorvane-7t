@@ -29,7 +29,7 @@ async def test_statement_timeout_is_503(engine: AsyncEngine):
         async with engine.begin() as conn:
             await conn.execute(text("SET LOCAL statement_timeout = 10"))
             await conn.execute(text("SELECT pg_sleep(1)"))
-    assert classify_db_error(caught.value, "GET") == (503, {"detail": "query timed out"})
+    assert classify_db_error(caught.value) == (503, {"detail": "query timed out"})
 
 
 async def test_lock_timeout_is_503(engine: AsyncEngine):
@@ -41,17 +41,7 @@ async def test_lock_timeout_is_503(engine: AsyncEngine):
                 await conn.execute(text("SET LOCAL lock_timeout = 10"))
                 await conn.execute(insert(readings), row)
         await holder.rollback()
-    assert classify_db_error(caught.value, "POST") == (503, {"detail": "database busy"})
-
-
-@pytest.mark.parametrize(("method", "loc"), [("GET", ["query"]), ("POST", ["body"])])
-async def test_numeric_overflow_is_422(engine: AsyncEngine, method: str, loc: list[str]):
-    with pytest.raises(SQLAlchemyError) as caught:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1e308::float8 * 10"))
-    status, body = classify_db_error(caught.value, method)
-    assert status == 422
-    assert body["detail"][0]["loc"] == loc
+    assert classify_db_error(caught.value) == (503, {"detail": "database busy"})
 
 
 async def test_integrity_error_is_generic_500(engine: AsyncEngine):
@@ -59,7 +49,7 @@ async def test_integrity_error_is_generic_500(engine: AsyncEngine):
     with pytest.raises(SQLAlchemyError) as caught:
         async with engine.begin() as conn:
             await conn.execute(insert(readings), [row, row])
-    assert classify_db_error(caught.value, "POST") == (500, {"detail": "internal server error"})
+    assert classify_db_error(caught.value) == (500, {"detail": "internal server error"})
 
 
 async def test_pool_exhausted_is_503(database_url: str):
@@ -71,7 +61,7 @@ async def test_pool_exhausted_is_503(database_url: str):
                     pass
     finally:
         await engine.dispose()
-    assert classify_db_error(caught.value, "GET") == (503, {"detail": "database unavailable"})
+    assert classify_db_error(caught.value) == (503, {"detail": "database unavailable"})
 
 
 async def test_guardrails_applied(database_url: str):

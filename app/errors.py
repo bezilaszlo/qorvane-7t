@@ -63,20 +63,20 @@ def _sqlstate(exc: Exception) -> str:
     return code or ""
 
 
-def classify_db_error(exc: Exception, method: str) -> tuple[int, dict[str, Any]]:
+def classify_db_error(exc: Exception) -> tuple[int, dict[str, Any]]:
     if busy := BUSY_DETAILS.get(_sqlstate(exc)):
         return 503, {"detail": busy}
     if _is_connection_failure(exc):
         return 503, UNAVAILABLE
     if isinstance(exc, DataError) or _sqlstate(exc).startswith("22"):
-        loc = ["body"] if method in {"POST", "PUT", "PATCH"} else ["query"]
-        detail = [{"type": "value_error", "loc": loc, "msg": "numeric value out of range"}]
+        # Only aggregates can overflow (e.g. sum over huge values), so it's a query problem.
+        detail = [{"type": "value_error", "loc": ["query"], "msg": "numeric value out of range"}]
         return 422, {"detail": detail}
     return 500, {"detail": "internal server error"}
 
 
 async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    status, body = classify_db_error(exc, request.method)
+    status, body = classify_db_error(exc)
     if status == 500:
         logger.error("unhandled database error", exc_info=exc)
     else:
