@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&display=swap" />
     <link rel="stylesheet" href="/static/style.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.6.2/dist/chart.umd.min.js"></script>
     <script defer src="/static/app.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.5/dist/cdn.min.js"></script>
   </head>
@@ -132,16 +133,8 @@
           </div>
           <p class="state" x-show="trendLoading" x-cloak><span class="spin"></span>Drawing the chart&hellip;</p>
           <p class="hint err" x-show="trendError" x-text="trendError" x-cloak></p>
-          <template x-if="chart && !trendLoading"><div>
-            <div class="chart" role="img" :aria-label="'Line chart of daily average ' + meta(chartMetric).label" x-html="chartSvg()"
-                 @pointermove="hover($event)" @pointerleave="hoverIdx = null" @pointerdown="hover($event)"></div>
-            <ul class="legend">
-              <template x-for="s in chart.series" :key="s.sensor">
-                <li><i class="swatch" :style="{ background: s.color }"></i><span x-text="pretty(s.sensor)"></span><b x-show="hoverIdx !== null" x-text="hoverVal(s)"></b></li>
-              </template>
-            </ul>
-            <p class="hint" x-text="hoverIdx !== null ? chart.dates[hoverIdx] : 'Touch or hover the chart to read a day. Gaps mean no readings that day.'"></p>
-          </div></template>
+          <div class="chart" x-show="hasChart && !trendLoading" role="img" :aria-label="'Line chart of daily average ' + meta(chartMetric).label"><canvas x-ref="canvas"></canvas></div>
+          <p class="hint" x-show="hasChart && !trendLoading">Hover or touch the chart to read a day. Gaps mean no readings that day.</p>
         </section>
 
         <section class="panel">

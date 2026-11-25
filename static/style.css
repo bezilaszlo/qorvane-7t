@@ -90,18 +90,8 @@ input { background: var(--soft); border: 1px solid var(--line); border-radius: 1
 .gauge.temp { background: linear-gradient(90deg, hsl(215 78% 55%), hsl(190 70% 48%) 40%, hsl(50 92% 50%) 50%, hsl(38 92% 52%) 70%, hsl(8 80% 55%)); }
 .gauge .pin { position: absolute; top: 50%; width: 16px; height: 16px; margin: -8px 0 0 -8px; border-radius: 50%; background: var(--card); border: 3px solid var(--ink); }
 
-.chart { margin-top: 10px; touch-action: pan-y; }
-.chart svg { display: block; width: 100%; height: auto; }
-.chart .grid { stroke: var(--line); stroke-width: 1; }
-.chart .tick { fill: var(--muted); font-size: 10.5px; font-family: system-ui, sans-serif; }
-.chart .unit { font-weight: 600; }
-.chart .line { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
-.chart .guide { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 3; }
-.chart .hov { stroke: var(--card); stroke-width: 2; }
-.legend { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .9rem; }
-.legend li { display: flex; align-items: center; gap: 6px; }
-.legend b { font-weight: 700; font-variant-numeric: tabular-nums; }
-.swatch { width: 14px; height: 4px; border-radius: 2px; display: inline-block; }
+.chart { position: relative; height: 280px; margin-top: 10px; touch-action: pan-y; }
+@media (max-width: 480px) { .chart { height: 300px; } }
 
 .group + .group { margin-top: 18px; }
 .group h3 { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }

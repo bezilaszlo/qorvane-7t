@@ -68,12 +68,7 @@ async function getJson(url) {
   return body;
 }
 
-function niceStep(span, n) {
-  const raw = span / n;
-  const pow = 10 ** Math.floor(Math.log10(raw));
-  const f = raw / pow;
-  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * pow;
-}
+let chartInst = null;
 
 const toLocalInput = (d) => {
   const p = (n) => String(n).padStart(2, "0");
@@ -99,10 +94,9 @@ document.addEventListener("alpine:init", () => {
     result: null,
     win: null,
     trend: null,
-    chart: null,
+    hasChart: false,
     trendLoading: false,
     trendError: "",
-    hoverIdx: null,
     token: 0,
     test: { sensor_id: "", metric: "", value: "" },
     testMsg: "",
@@ -111,6 +105,7 @@ document.addEventListener("alpine:init", () => {
     meta,
 
     async init() {
+      matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => this.drawChart());
       this.readUrl();
       await this.loadSensors();
       if (this.errors.length) return;
@@ -211,8 +206,7 @@ document.addEventListener("alpine:init", () => {
 
     setChartMetric(m) {
       this.chartMetric = m;
-      this.hoverIdx = null;
-      this.chart = this.buildChart();
+      this.drawChart();
       this.writeUrl();
     },
 
@@ -235,7 +229,7 @@ document.addEventListener("alpine:init", () => {
         this.errors = e.lines;
         this.result = null;
         this.trend = null;
-        this.chart = null;
+        this.clearChart();
       } finally {
         if (token === this.token) {
           this.loading = false;
@@ -262,11 +256,11 @@ document.addEventListener("alpine:init", () => {
         const days = await Promise.all(jobs);
         if (token !== this.token) return;
         this.trend = days;
-        this.chart = this.buildChart();
+        this.drawChart();
       } catch (e) {
         if (token !== this.token) return;
         this.trend = null;
-        this.chart = null;
+        this.clearChart();
         this.trendError = `The day-by-day chart could not be loaded. ${e.lines.join(" ")}`;
       } finally {
         if (token === this.token) this.trendLoading = false;
@@ -393,92 +387,75 @@ document.addEventListener("alpine:init", () => {
       return [...this.result.results].sort((a, b) => a.sensor_id.localeCompare(b.sensor_id) || order(a.metric) - order(b.metric));
     },
 
-    buildChart() {
-      if (!this.trend || !this.chartMetric) return null;
+    clearChart() {
+      if (chartInst) chartInst.destroy();
+      chartInst = null;
+      this.hasChart = false;
+    },
+
+    async drawChart() {
+      this.hasChart = !!this.trend && this.trend.some((d) => d.rows.some((r) => r.metric === this.chartMetric));
+      await this.$nextTick();
+      if (chartInst) chartInst.destroy();
+      chartInst = null;
       const m = this.chartMetric;
-      const W = 360, H = 210, L = 40, R = 12, T = 18, B = 26;
+      const canvas = this.$refs.canvas;
+      if (!this.hasChart || !canvas) return;
       const days = this.trend;
-      const sensorSet = new Set();
-      const val = days.map((d) => {
-        const o = {};
-        for (const r of d.rows) if (r.metric === m) {
-          o[r.sensor_id] = r.value;
-          sensorSet.add(r.sensor_id);
-        }
-        return o;
+      const ids = [...new Set(days.flatMap((d) => d.rows.filter((r) => r.metric === m).map((r) => r.sensor_id)))].sort();
+      const unit = meta(m).unit;
+      const css = getComputedStyle(document.documentElement);
+      const ink = css.getPropertyValue("--muted").trim();
+      const grid = css.getPropertyValue("--line").trim();
+      const card = css.getPropertyValue("--card").trim();
+      const last = days.length - 1;
+      const labels = days.map((d, i) => (this.period !== "custom" && i === last ? "Today" : dayLabel(new Date(d.e.getTime() - 1))));
+      const longDates = days.map((d) => new Date(d.e.getTime() - 1).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }));
+      const datasets = ids.map((sensor) => ({
+        label: pretty(sensor),
+        data: days.map((d) => d.rows.find((r) => r.metric === m && r.sensor_id === sensor)?.value ?? null),
+        borderColor: this.color(sensor),
+        backgroundColor: this.color(sensor),
+        borderWidth: 2.4,
+        pointRadius: days.length <= 8 ? 3 : 2,
+        pointHoverRadius: 5,
+        tension: 0,
+        spanGaps: false,
+      }));
+      chartInst = new Chart(canvas, {
+        type: "line",
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: false,
+          interaction: { mode: "index", intersect: false },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: ink, maxRotation: 0, autoSkipPadding: 14 }, border: { color: grid } },
+            y: {
+              grid: { color: grid },
+              border: { display: false },
+              ticks: { color: ink, callback: (v) => this.fmt(v) },
+              title: { display: !!unit, text: unit, color: ink },
+            },
+          },
+          plugins: {
+            legend: { position: "bottom", labels: { color: ink, usePointStyle: true, boxWidth: 8, boxHeight: 8 } },
+            tooltip: {
+              backgroundColor: card,
+              titleColor: css.getPropertyValue("--ink").trim(),
+              bodyColor: css.getPropertyValue("--ink").trim(),
+              borderColor: grid,
+              borderWidth: 1,
+              usePointStyle: true,
+              callbacks: {
+                title: (items) => longDates[items[0].dataIndex],
+                label: (c) => `${c.dataset.label}: ${this.fmt(c.parsed.y)}${unit ? " " + unit : ""}`,
+              },
+            },
+          },
+        },
       });
-      const ids = [...sensorSet].sort();
-      const all = val.flatMap((o) => Object.values(o));
-      if (!all.length) return null;
-      let lo = Math.min(...all);
-      let hi = Math.max(...all);
-      if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
-      const step = niceStep(hi - lo, 4);
-      lo = Math.floor(lo / step) * step;
-      hi = Math.ceil(hi / step) * step;
-      const n = days.length;
-      const X = (i) => (n === 1 ? (L + W - R) / 2 : L + (i * (W - L - R)) / (n - 1));
-      const Y = (v) => T + ((hi - v) / (hi - lo)) * (H - T - B);
-      const yTicks = [];
-      for (let v = lo; v <= hi + step / 2; v += step) {
-        const r = Math.round(v / step) * step;
-        yTicks.push({ y: Y(r), label: (+r.toFixed(6)).toLocaleString().replace("-", "−") });
-      }
-      const series = ids.map((sensor) => {
-        const pts = val.map((o, i) => (sensor in o ? { x: X(i), y: Y(o[sensor]), v: o[sensor] } : null));
-        let d = "";
-        let pen = false;
-        const dots = [];
-        pts.forEach((p, i) => {
-          if (!p) { pen = false; return; }
-          d += `${pen ? "L" : "M"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
-          const isolated = !pts[i - 1] && !pts[i + 1];
-          if (isolated || n <= 8) dots.push(p);
-          pen = true;
-        });
-        return { sensor, color: this.color(sensor), d, pts, dots };
-      });
-      const lastIdx = n - 1;
-      const label = (i) => (this.period !== "custom" && i === lastIdx ? "Today" : dayLabel(new Date(days[i].e.getTime() - 1)));
-      const want = Math.min(n, 4);
-      const idxs = [...new Set(Array.from({ length: want }, (_, k) => Math.round((k * lastIdx) / Math.max(want - 1, 1))))];
-      const xTicks = idxs.map((i) => ({ x: X(i), label: label(i), anchor: i === 0 && n > 1 ? "start" : i === lastIdx && n > 1 ? "end" : "middle" }));
-      const dates = days.map((d) => new Date(d.e.getTime() - 1).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" }));
-      return { w: W, h: H, l: L, r: R, t: T, b: B, unit: meta(m).unit, yTicks, xTicks, series, dates, n, X };
-    },
-
-    chartSvg() {
-      const c = this.chart;
-      if (!c) return "";
-      const hi = this.hoverIdx;
-      let o = `<svg viewBox="0 0 ${c.w} ${c.h}" aria-hidden="true">`;
-      for (const t of c.yTicks) {
-        o += `<line class="grid" x1="${c.l}" x2="${c.w - c.r}" y1="${t.y}" y2="${t.y}"/><text class="tick" x="${c.l - 6}" y="${t.y + 3.5}" text-anchor="end">${t.label}</text>`;
-      }
-      o += `<text class="tick unit" x="${c.l - 6}" y="9" text-anchor="end">${c.unit}</text>`;
-      for (const t of c.xTicks) o += `<text class="tick" x="${t.x}" y="${c.h - 6}" text-anchor="${t.anchor}">${t.label}</text>`;
-      if (hi !== null) o += `<line class="guide" x1="${c.X(hi)}" x2="${c.X(hi)}" y1="${c.t}" y2="${c.h - c.b}"/>`;
-      for (const s of c.series) {
-        o += `<path class="line" d="${s.d}" stroke="${s.color}"/>`;
-        for (const p of s.dots) o += `<circle cx="${p.x}" cy="${p.y}" r="2.6" fill="${s.color}"/>`;
-        if (hi !== null && s.pts[hi]) o += `<circle class="hov" cx="${s.pts[hi].x}" cy="${s.pts[hi].y}" r="4.5" fill="${s.color}"/>`;
-      }
-      return `${o}</svg>`;
-    },
-
-    hover(ev) {
-      const c = this.chart;
-      if (!c) return;
-      const box = ev.currentTarget.getBoundingClientRect();
-      const x = ((ev.clientX - box.left) / box.width) * c.w;
-      const idx = c.n === 1 ? 0 : Math.round(((x - c.l) / (c.w - c.l - c.r)) * (c.n - 1));
-      this.hoverIdx = clamp(idx, 0, c.n - 1);
-    },
-
-    hoverVal(s) {
-      const p = s.pts[this.hoverIdx];
-      const u = meta(this.chartMetric).unit;
-      return p ? `${this.fmt(p.v)}${u ? " " + u : ""}` : "no data";
     },
 
     async sendTest() {
