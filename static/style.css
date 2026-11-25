@@ -77,7 +77,7 @@ input { background: var(--soft); border: 1px solid var(--line); border-radius: 1
 .insight { margin: 4px 0 18px; padding: 18px 18px; background: var(--hero); border-radius: 16px; font-size: 1.3rem; line-height: 1.3; font-weight: 500; letter-spacing: -.01em; }
 @media (min-width: 760px) { .insight { font-size: 1.6rem; padding: 22px 26px; } }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 14px; margin-bottom: 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 14px; margin-bottom: 16px; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 14px; align-content: start; }
 .card h2 { display: flex; align-items: center; gap: 8px; }
 .reading { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 4px 12px; }

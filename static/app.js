@@ -280,7 +280,11 @@ document.addEventListener("alpine:init", () => {
     fmt(v) {
       if (!Number.isFinite(v)) return String(v);
       const a = Math.abs(v);
-      return v.toLocaleString(undefined, { maximumFractionDigits: a >= 1000 ? 0 : a >= 10 ? 1 : 2 }).replace("-", "−");
+      // One decimal everywhere so values line up (no "4" next to "7.08"); integers past 1000.
+      const digits = a >= 1000 ? 0 : 1;
+      return v
+        .toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })
+        .replace("-", "−");
     },
 
     periodPhrase() {
@@ -418,7 +422,7 @@ document.addEventListener("alpine:init", () => {
       const yTicks = [];
       for (let v = lo; v <= hi + step / 2; v += step) {
         const r = Math.round(v / step) * step;
-        yTicks.push({ y: Y(r), label: this.fmt(+r.toFixed(6)) });
+        yTicks.push({ y: Y(r), label: (+r.toFixed(6)).toLocaleString().replace("-", "−") });
       }
       const series = ids.map((sensor) => {
         const pts = val.map((o, i) => (sensor in o ? { x: X(i), y: Y(o[sensor]), v: o[sensor] } : null));
