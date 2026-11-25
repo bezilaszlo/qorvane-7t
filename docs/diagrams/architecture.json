@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Weather Metrics Service: Prototype Architecture",
+    "output": "docs/diagrams/architecture.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "layout": { "mode": "auto" },
+  "components": [
+    { "id": "sensors", "type": "external", "label": "Sensors / clients", "sublabel": "HTTP JSON, may retry",
+      "explanation": "Sensors are implicit: they exist once their first reading arrives. Retries are safe because ingest is idempotent on (sensor_id, metric, ts)." },
+    { "id": "ui", "type": "frontend", "label": "Demo UI", "sublabel": "Alpine.js + uPlot",
+      "explanation": "One static page served by FastAPI. Picks sensors, metrics, statistic and range, then renders a table and a chart. No build step." },
+    { "id": "k6", "type": "external", "label": "k6 load test", "sublabel": "ingest + query scenarios",
+      "explanation": "Measures both paths because the workload profile (ingest- vs query-heavy) is unknown." },
+    { "id": "api", "type": "backend", "label": "FastAPI", "sublabel": "async, N uvicorn workers", "tag": "Pydantic v2",
+      "explanation": "Stateless, fully async API. Validates input (tz-aware timestamps, finite values, 1 to 31 day ranges), then acks a write only after the Postgres commit. One asyncpg pool per worker; workers x pool size must stay below max_connections." },
+    { "id": "db", "type": "database", "label": "PostgreSQL 17", "sublabel": "readings table, PK index", "tag": "durable",
+      "explanation": "One narrow table readings(sensor_id, metric, ts, value) with PRIMARY KEY (sensor_id, metric, ts). The key gives idempotent ingest and serves range queries. Unpartitioned on purpose: partitioning and rollups are documented next steps." },
+    { "id": "seed", "type": "backend", "label": "Seed script", "sublabel": "synthetic 30-day data",
+      "explanation": "Bulk-loads N sensors x 30 days of sine-plus-noise data with COPY, for the demo and the data-volume perf sweep." }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "Docker Compose, single node", "wraps": ["api", "db"] }
+  ],
+  "connections": [
+    { "id": "ingest", "from": "sensors", "to": "api", "label": "POST /readings", "variant": "emphasis" },
+    { "id": "query", "from": "ui", "to": "api", "label": "GET /stats" },
+    { "id": "load", "from": "k6", "to": "api", "label": "load", "variant": "dashed" },
+    { "id": "sql", "from": "api", "to": "db", "label": "SQL via asyncpg", "variant": "emphasis" },
+    { "id": "copy", "from": "seed", "to": "db", "label": "COPY", "variant": "dashed" }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Ingest path", "items": [
+      "Batch of 1 to 1000 readings, many metrics each",
+      "One INSERT ... ON CONFLICT DO NOTHING per request",
+      "201 {inserted, duplicates} only after commit"
+    ] },
+    { "dot": "cyan", "title": "Query path", "items": [
+      "One SQL GROUP BY sensor_id, metric with min/max/sum/avg",
+      "Range 1 to 31 days, default last 24 h",
+      "Empty range returns value null, count 0"
+    ] },
+    { "dot": "amber", "title": "Known limits", "items": [
+      "Single Postgres node: no replica or failover",
+      "No broker in front: bursts hit the DB directly",
+      "No auth, no rollups; see next steps"
+    ] }
+  ]
+}

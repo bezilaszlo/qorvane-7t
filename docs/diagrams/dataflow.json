@@ -1,0 +1,196 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "Weather Metrics: Production Target Data Flow",
+    "output": "docs/diagrams/dataflow.html",
+    "locale": "en",
+    "quality_profile": "showcase"
+  },
+  "stages": [
+    {
+      "label": "Sources"
+    },
+    {
+      "label": "Ingest"
+    },
+    {
+      "label": "Durable log"
+    },
+    {
+      "label": "Store"
+    },
+    {
+      "label": "Serve"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "sensors",
+      "type": "external",
+      "label": "Sensors",
+      "sublabel": "at-least-once",
+      "stage": 0,
+      "row": 1,
+      "explanation": "Devices retry on timeout, so every downstream write must be idempotent. Readings carry event time, which can be late or out of order."
+    },
+    {
+      "id": "gateway",
+      "type": "cloud",
+      "label": "Ingest API",
+      "sublabel": "auth + validate",
+      "stage": 1,
+      "row": 1,
+      "tag": "stateless",
+      "explanation": "Stateless gateway (API Gateway + Lambda, or FastAPI replicas). Acks only after the record is durably appended to the log."
+    },
+    {
+      "id": "log",
+      "type": "messagebus",
+      "label": "Event log",
+      "sublabel": "Kafka / Kinesis",
+      "stage": 2,
+      "row": 1,
+      "tag": "system of record",
+      "explanation": "Append-only, replicated, partitioned by sensor_id. Absorbs bursts, decouples producers from consumers and allows replay. In the prototype this role is played by the Postgres commit."
+    },
+    {
+      "id": "archive",
+      "type": "database",
+      "label": "Raw archive",
+      "sublabel": "S3 / Parquet",
+      "stage": 3,
+      "row": 0,
+      "tag": "immutable",
+      "explanation": "Immutable copy of every raw reading. Any derived store can be rebuilt from it."
+    },
+    {
+      "id": "tsdb",
+      "type": "database",
+      "label": "Time-series DB",
+      "sublabel": "Postgres / Timescale",
+      "stage": 3,
+      "row": 1,
+      "tag": "hot, derived",
+      "explanation": "Queryable hot store, partitioned by time, with retention. Writes are idempotent upserts keyed by (sensor_id, metric, ts)."
+    },
+    {
+      "id": "rollups",
+      "type": "backend",
+      "label": "Rollup job",
+      "sublabel": "hourly min/max/sum/count",
+      "stage": 3,
+      "row": 2,
+      "tag": "derived",
+      "explanation": "Stream or scheduled job producing hourly aggregates so long-range queries read hundreds of rows, not millions. avg = sum / count."
+    },
+    {
+      "id": "query",
+      "type": "backend",
+      "label": "Query API",
+      "sublabel": "GET /stats",
+      "stage": 4,
+      "row": 1,
+      "explanation": "Reads hourly rollups for long ranges and raw rows for short or recent ranges. Scales with read replicas and caching."
+    },
+    {
+      "id": "clients",
+      "type": "frontend",
+      "label": "Dashboards",
+      "sublabel": "UI / clients",
+      "stage": 4,
+      "row": 0
+    }
+  ],
+  "flows": [
+    {
+      "id": "readings",
+      "from": "sensors",
+      "to": "gateway",
+      "label": "readings",
+      "variant": "emphasis"
+    },
+    {
+      "id": "append",
+      "from": "gateway",
+      "to": "log",
+      "label": "append, then ack",
+      "variant": "emphasis"
+    },
+    {
+      "id": "archive-sink",
+      "from": "log",
+      "to": "archive",
+      "label": "raw sink",
+      "variant": "dashed"
+    },
+    {
+      "id": "upsert",
+      "from": "log",
+      "to": "tsdb",
+      "label": "idempotent upsert",
+      "variant": "emphasis"
+    },
+    {
+      "id": "stream",
+      "from": "log",
+      "to": "rollups",
+      "label": "stream",
+      "variant": "dashed"
+    },
+    {
+      "id": "rollup-write",
+      "from": "rollups",
+      "to": "tsdb",
+      "label": "hourly rollups"
+    },
+    {
+      "id": "raw-read",
+      "from": "tsdb",
+      "to": "query",
+      "label": "range queries"
+    },
+    {
+      "id": "results",
+      "from": "query",
+      "to": "clients",
+      "label": "JSON stats"
+    },
+    {
+      "id": "replay",
+      "from": "archive",
+      "to": "tsdb",
+      "label": "replay / rebuild",
+      "variant": "dashed"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Durability",
+      "items": [
+        "Ack only after a durable append",
+        "Log is the system of record; stores are derived",
+        "Raw archive allows full replay"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Correctness",
+      "items": [
+        "At-least-once delivery + idempotent writes",
+        "Event time vs processing time: keep received_at",
+        "Late and out-of-order readings are expected"
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Prototype mapping",
+      "items": [
+        "Ingest API, log and TSDB collapse into FastAPI + one Postgres",
+        "Postgres WAL commit gives durable-before-ack",
+        "Broker, archive and rollups are next steps"
+      ]
+    }
+  ]
+}

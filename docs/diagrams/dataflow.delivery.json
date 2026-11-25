@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "152493e7-2587-4098-ac4a-23697998769b",
+  "status": "current",
+  "command": "deliver",
+  "type": "dataflow",
+  "input": "/home/bezi/Projects/genesys-homework/docs/diagrams/dataflow.json",
+  "output": "/home/bezi/Projects/genesys-homework/docs/diagrams/dataflow.html",
+  "specification": {
+    "sha256": "d3a69773679fe117f6327ac177808e32c76adea1a08fbe539de23b12a2ec8c10",
+    "bytes": 4898
+  },
+  "artifact": {
+    "sha256": "24cee45bf040993acd06454400d2693ad52b03d540c0030efb59143d0b534ade",
+    "bytes": 932819
+  }
+}
