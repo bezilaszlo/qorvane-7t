@@ -47,8 +47,8 @@ CREATE TABLE readings (
 - `inserted` is the row count; `duplicates` is the remainder (stored or within the batch).
 - **Commit before ack.** FastAPI's default `yield`-dependency scope ("request") runs its exit code
   after the response is sent, which would commit *after* the 201. The connection dependency uses
-  `scope="function"`, so the transaction commits before the response; a unit test with a failing
-  commit guards this.
+  `scope="function"`, so the transaction commits before the response; a unit test asserts the
+  declaration, and the black-box suite checks the behavior.
 
 ## Read path
 
@@ -103,6 +103,9 @@ are what make such queries fast.
 | Invalid input, range out of bounds, numeric overflow (`22xxx`) | 422, with field-level details; inputs are echoed only if small and JSON-safe |
 | Database unreachable, pool exhausted, query cancelled by timeout, lock timeout | 503 |
 | Anything else | 500 with a generic body; the exception is logged |
+
+The mapping is the pure function `classify_db_error`; integration tests (`tests/integration`) feed it
+real exceptions from a Postgres container.
 
 ## API and worker separation
 

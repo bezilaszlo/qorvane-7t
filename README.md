@@ -63,6 +63,7 @@ The full list of assumptions is in [docs/plan.md](docs/plan.md).
 ```bash
 uv sync
 make test                                        # unit tests
+make test-integration                            # database behaviour, real Postgres (needs Docker)
 
 # API contract tests, run against a separate throwaway stack
 API_PORT=8010 docker compose -p bbtest up --build -d
@@ -89,7 +90,7 @@ app/       the API (FastAPI)
 alembic/   database migrations
 static/    the web page
 scripts/   synthetic data generator
-tests/     contract tests (blackbox/) and unit tests (unit/)
+tests/     unit, integration (real Postgres) and contract (blackbox/) tests
 perf/      load test scripts
 docs/      design, performance, plan, diagrams
 ```
