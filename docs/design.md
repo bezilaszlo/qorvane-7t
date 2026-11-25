@@ -95,8 +95,8 @@ problems return `422`; anything else returns a generic `500` and is logged.
 Migrations use their own engine without these timeouts, so they can legitimately run long.
 
 The guardrails trade completeness for stability: an all-sensor 30-day query over 100 sensors
-(measured at 12 s) now fails fast with a 503 instead of occupying a connection. Rollups (below)
-are what make such queries fast.
+takes 2–3 s alone and exceeds 5 s once a few run at once; those now fail fast with a 503 instead
+of occupying connections. Rollups (below) are what make such queries fast.
 
 ## Error handling
 
