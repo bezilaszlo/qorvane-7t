@@ -78,7 +78,7 @@ implementation. Linting, type checks and unit tests also run as pre-commit hooks
 ## Documentation
 
 - [Design](docs/design.md): how it works, technical decisions, limitations and next steps
-- [Performance](docs/performance.md): load tests and what a single machine can handle
+- [Performance](docs/performance.md): load tests and what one API pod can handle
 - [Plan](docs/plan.md): the original plan, assumptions and milestones
 - Diagrams: [architecture](docs/diagrams/architecture.svg) and the
   [production target data flow](docs/diagrams/dataflow.svg)

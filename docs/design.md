@@ -65,6 +65,8 @@ CREATE TABLE readings (
   No blocking I/O runs on the event loop.
 - CPU parallelism comes from processes: `fastapi run --workers N`, one connection pool per worker,
   sized so `workers × (pool_size + max_overflow)` stays below Postgres `max_connections`.
+- Target pod: one API container of 2 vCPU / 2 GiB running 2 workers (one process per CPU), set in
+  `compose.yaml`; Postgres is sized separately. Capacity per pod is in [performance.md](performance.md).
 - Validating and sorting a 10,000-point batch is CPU work on the event loop; async cannot help with
   that, more workers do. The load test shows it: small-batch ingest is API-bound and scales with
   workers.
@@ -118,7 +120,7 @@ would acknowledge after enqueueing, not after committing, so the queue must be d
 acknowledgement to mean anything. That is worth it once a workload calls for it:
 
 - **Ingest-heavy**: API → durable log (Kafka / Kinesis) → writer workers using `COPY`. This is
-  the API/worker split with the log as the hand-off, and the path past the ~120k rows/s that a
+  the API/worker split with the log as the hand-off, and the path past the ~100k rows/s that a
   single Postgres reached in the load test.
 - **Query-heavy**: a scheduled rollup worker maintaining hourly aggregates; the first worker to add,
   since long-range all-sensor queries are the clearest gap in the measurements.
@@ -151,4 +153,4 @@ sensors → ingest API → durable log → {raw archive, time-series store, roll
 - The demo UI's day-by-day chart issues 1-day `/api/v1/stats` requests client-side (with capped
   concurrency) because there is no bucketed series endpoint yet.
 - The demo UI is checked by screenshots and code review, not by automated UI tests.
-- Performance numbers come from one run per configuration on a shared laptop (±10–20% noise).
+- Performance numbers come from one run per configuration on a shared laptop with a CPU-limited API container (±10–20% noise).
