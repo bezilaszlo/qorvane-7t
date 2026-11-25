@@ -145,5 +145,7 @@ sensors → ingest API → durable log → {raw archive, time-series store, roll
 
 - No authentication.
 - `/sensors` lists only the last 24 hours and is unpaginated.
+- The demo UI's day-by-day chart issues 1-day `/api/v1/stats` requests client-side (with capped
+  concurrency) because there is no bucketed series endpoint yet.
 - The demo UI is checked by screenshots and code review, not by automated UI tests.
 - Performance numbers come from one run per configuration on a shared laptop (±10–20% noise).

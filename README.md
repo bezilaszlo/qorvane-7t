@@ -29,18 +29,17 @@ Send readings: a batch of measurements, each with one or more metrics.
 ```bash
 curl -s -X POST localhost:8000/api/v1/readings -H 'content-type: application/json' -d '{
   "readings": [
-    {"sensor_id": "sensor-1", "ts": "2026-11-25T10:00:00Z", "metrics": {"temperature": 21.3, "humidity": 40}},
-    {"sensor_id": "sensor-1", "ts": "2026-11-25T11:00:00Z", "metrics": {"temperature": 22.1, "humidity": 38}}
+    {"sensor_id": "sensor-1", "metrics": {"temperature": 21.3, "humidity": 40}}
   ]}'
-# → {"inserted": 4, "duplicates": 0}    sending the same readings again is harmless
+# → {"inserted": 2, "duplicates": 0}
 ```
 
-Ask a question: the average temperature and humidity for sensor-1 over the last week.
+Ask a question: the average temperature and humidity for sensor-1 over the last 24 hours.
 
 ```bash
-curl -s "localhost:8000/api/v1/stats?sensor_id=sensor-1&metric=temperature&metric=humidity&stat=avg&start=$(date -u -d '7 days ago' +%FT%TZ)"
+curl -s "localhost:8000/api/v1/stats?sensor_id=sensor-1&metric=temperature&metric=humidity&stat=avg"
 # → {"stat": "avg", "start": "...", "end": "...",
-#    "results": [{"sensor_id": "sensor-1", "metric": "humidity", "value": 39.0, "count": 2}, ...]}
+#    "results": [{"sensor_id": "sensor-1", "metric": "humidity", "value": 40.0, "count": 1}, ...]}
 ```
 
 | Endpoint | What it does |
