@@ -83,8 +83,8 @@ configurable via env):
 | `idle_in_transaction_session_timeout` | 10 s | A transaction left open by a bug cannot hold locks indefinitely. |
 | pool timeout | 5 s | Waiting for a free pooled connection is bounded. |
 
-Settings: `DB_STATEMENT_TIMEOUT_MS`, `DB_LOCK_TIMEOUT_MS`, `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS`,
-`DB_POOL_TIMEOUT` (see `.env.example`). API connections also report `application_name=sensor-api`,
+These are chosen defaults, kept as named constants in `app/db.py`, not environment settings; the
+only runtime setting is `DATABASE_URL`. API connections also report `application_name=sensor-api`,
 so they are easy to find in `pg_stat_activity`.
 
 A cancelled query (`503 "query timed out"`), a lock timeout (`503 "database busy"`), an exhausted

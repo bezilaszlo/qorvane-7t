@@ -139,7 +139,7 @@ A single `SELECT sensor_id, metric, <agg>(value), count(*) ... GROUP BY sensor_i
   in the lifespan handler.
 - Constraint: `workers × (pool_size + max_overflow) < postgres max_connections`.
 - Connection per request via dependency (`engine.begin()`), and the transaction commits before the response.
-- Settings via `pydantic-settings` (env vars), documented in `.env.example`.
+- Only `DATABASE_URL` comes from the environment (`pydantic-settings`); tuning defaults are constants in code.
 - Run with `fastapi run --workers $WORKERS`; Alembic migrations run as a one-shot `migrate`
   service before `api` starts (never inside worker lifespan).
 
@@ -152,7 +152,7 @@ static/         index.html, app.js (Alpine.js)
 scripts/        seed.py (bulk COPY of synthetic data)
 tests/          blackbox/ (HTTP-only contract tests), unit/ (pure logic)
 perf/           k6 scripts: ingest.js, query.js + results write-up
-compose.yaml    db, migrate (one-shot), api (+ k6 via profile)
+compose.yaml    db, migrate (one-shot), api; compose.tools.yaml: seed, k6
 AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
 ```
 

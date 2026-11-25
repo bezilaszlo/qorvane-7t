@@ -20,7 +20,7 @@ make seed                        # optional: 30 days of synthetic data for 10 se
 - API documentation: http://localhost:8000/docs
 - Stop: `docker compose down` (add `-v` to delete the data)
 
-The port and other settings can be changed through environment variables; see `.env.example`.
+Port 8000 already taken? Start it on another one: `API_PORT=8001 docker compose up --build -d`.
 
 ## Using the API
 

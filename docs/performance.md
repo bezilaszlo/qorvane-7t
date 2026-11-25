@@ -13,16 +13,17 @@ make perf-query                                  # GET /stats scenarios
 make perf-ingest                                 # POST /readings scenarios
 ```
 
-Seeding runs inside the Compose network (`seed` service, profile `tools`); the k6 service is under
-profile `perf` (`grafana/k6:1.5.0`, mounts `perf/`, targets `http://api:8000`).
-Knobs (env): `WORKERS` (API processes), `DURATION` (per scenario, default 30s), `VUS`,
+Seed and k6 are defined in `compose.tools.yaml`, layered on `compose.yaml` by the Makefile targets, so
+they run inside the Compose network (k6: `grafana/k6:1.5.0`, mounts `perf/`, targets `http://api:8000`).
+API processes: `WORKERS` in `compose.yaml`. Knobs (env): `DURATION` (per scenario, default 30s), `VUS`,
 `SENSORS` (query.js: how many seeded sensors to pick from, default 10). Add `--truncate` to the seed
 to start from an empty table; without it, re-seeding the same `--end` only reports duplicates.
 Each script prints one `RESULT ...` line per scenario (thresholds are always-pass and only
 exist so that k6 reports per-scenario sub-metrics; runs never fail on latency).
 
 Reproduction used for the tables below (separate project and port so other stacks are untouched):
-`API_PORT=8030 WORKERS=<n> DURATION=20s VUS=<8|16> docker compose -p perf-lane ...`.
+`API_PORT=8030 DURATION=20s VUS=<8|16> docker compose -p perf-lane ...`, with `WORKERS` set to `<n>`
+(at the time an environment override; now edit it in `compose.yaml`).
 
 ## Method
 
