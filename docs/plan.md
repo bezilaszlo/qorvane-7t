@@ -21,7 +21,7 @@ aggregate queries (min / max / sum / avg) over a time range.
 | Runtime / packaging | Python 3.13, `uv` |
 | API | FastAPI, Pydantic v2, fully async |
 | DB access | SQLAlchemy 2.0 async + asyncpg, Alembic migrations |
-| Database | Postgres + TimescaleDB extension (plain hypertable only), Docker Compose |
+| Database | Plain Postgres 17 (pinned image), single unpartitioned table, Docker Compose |
 | UI | Single static page: Alpine.js + uPlot, served by FastAPI |
 | Tests | pytest + httpx `AsyncClient` against a real Postgres |
 | Load test | k6 (Docker) |
@@ -61,15 +61,25 @@ CREATE TABLE readings (
     value      double precision NOT NULL,
     PRIMARY KEY (sensor_id, metric, ts)   -- idempotency + range-query index
 );
-SELECT create_hypertable('readings', by_range('ts'));
 ```
 
 - Narrow, long table: adding a metric needs no migration.
 - The primary key doubles as the query index: `WHERE sensor_id IN (...) AND metric IN (...)
-  AND ts >= ... AND ts < ...`.
-- Hypertable: time-chunked partitions keep per-chunk indexes small (good for sustained
-  ingest), let range queries prune chunks, and make retention a cheap chunk drop.
-  Removing it would change nothing else in the code.
+  AND ts >= ... AND ts < ...` goes straight to the matching rows.
+
+### Why plain Postgres, no partitioning
+
+- The data is time series, but at an unknown and likely prototype scale a single indexed table
+  handles it. Query cost is driven by the number of rows aggregated, which partitioning does
+  not reduce. The index already narrows to them.
+- Partitioning (native `PARTITION BY RANGE (ts)` or TimescaleDB hypertables) pays off at
+  volume: cheap retention by dropping partitions, smaller per-partition indexes under heavy
+  ingest, per-partition vacuum. That's a documented next step, not a prototype need.
+- Rollups, not partitioning, are what speed up long-range queries.
+- Plain Postgres runs anywhere, including AWS RDS and Aurora, which don't offer TimescaleDB.
+- The decision is cheap to reverse: the schema is already time-series shaped. Adopting
+  TimescaleDB is one `create_hypertable(..., migrate_data => true)` migration, with no app changes.
+- The perf test backs this up with numbers (latency vs table size).
 
 ## API
 
@@ -132,7 +142,7 @@ A single `SELECT sensor_id, metric, <agg>(value), count(*) ... GROUP BY sensor_i
 
 ```
 app/            main.py, config.py, db.py, models.py, schemas.py, api/ (readings, stats, sensors, health)
-alembic/        migrations (table + hypertable)
+alembic/        migrations
 static/         index.html, app.js (Alpine + uPlot)
 scripts/        seed.py (bulk COPY of synthetic data)
 tests/          integration tests against a Postgres test DB
@@ -143,7 +153,7 @@ AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
 
 ## Milestones
 
-- [ ] **M1 Scaffold:** uv project, ruff, ty, pre-commit, compose with Timescale (pinned image),
+- [ ] **M1 Scaffold:** uv project, ruff, ty, pre-commit, compose with Postgres (pinned image),
       config, async DB wiring, health endpoints, `AGENTS.md`.
 - [ ] **M2 Ingest:** schema + migration, `POST /readings` with validation and idempotency, tests.
 - [ ] **M3 Query:** `GET /stats` with range rules, all four stats, empty-result handling, tests.
@@ -172,16 +182,20 @@ Goal: show what a single node handles and where it saturates. We don't optimize 
 - Query: p50/p95/p99 for 1-day and 31-day ranges, single sensor and all sensors,
   on the seeded data set.
 - Sweep `WORKERS` (1, 2, 4, ...) and record the hardware alongside the results.
+- Data-volume sweep: seed growing data sets (e.g. 1M → 10M → 100M rows) and plot query
+  latency against table size, to show where the unpartitioned table stops being enough.
 
 ## Limitations & next steps (README outline)
 
 Decided by the measured workload profile, not up front.
 
+- **Large volume / retention:** time partitioning, either native range partitions with
+  `pg_partman` or TimescaleDB hypertables (self-hosted / Timescale Cloud), plus compression
+  of old data.
 - **Ingest-heavy:** put a durable log (Kafka / Kinesis) in front of the DB to absorb bursts,
-  decouple producers and allow replay; `COPY`-based writers; partition by `sensor_id`;
-  compression of old chunks.
-- **Query-heavy:** continuous aggregates (hourly min/max/sum/count rollups, avg = sum/count),
-  read replicas, caching of hot windows.
+  decouple producers and allow replay; `COPY`-based writers; sharding by `sensor_id`.
+- **Query-heavy:** rollups (hourly min/max/sum/count, avg = sum/count) via TimescaleDB
+  continuous aggregates or a rollup table, plus read replicas and caching of hot windows.
 - **Reliability / HA:** Postgres replication + automatic failover (Patroni / RDS Multi-AZ),
   WAL archiving + point-in-time recovery, stateless API replicas behind a load balancer,
   rate limiting, request size limits.
