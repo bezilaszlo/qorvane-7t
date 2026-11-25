@@ -153,26 +153,51 @@ AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
 
 ## Milestones
 
-- [ ] **M1 Scaffold:** uv project, ruff, ty, pre-commit, compose with Postgres (pinned image),
-      config, async DB wiring, health endpoints, `AGENTS.md`.
-- [ ] **M2 Ingest:** schema + migration, `POST /readings` with validation and idempotency, tests.
-- [ ] **M3 Query:** `GET /stats` with range rules, all four stats, empty-result handling, tests.
+Red/green order: the stack runs first, then the black-box tests are written against the API
+contract and fail, then the implementation makes them pass. One commit per milestone.
+
+- [ ] **M1 Skeleton:** `docker compose up` starts the whole stack (Postgres + migrations + API
+      serving the static UI). uv project, ruff, ty, pre-commit, config, async DB wiring, Alembic
+      migration for `readings`, working `/health` and `/ready`. Core endpoints exist with their
+      request/response schemas but return `501 Not Implemented`. `AGENTS.md`. No core logic.
+- [ ] **M2 Black-box test harness (red):** pytest suite that talks to the running API over HTTP
+      only (see Testing). It covers the ingest and query contract and the assumptions above. It
+      runs against the compose stack, and every core test fails against the 501 stubs.
+- [ ] **M3 Implement (green):** ingest (validation, idempotent batch insert, ack after commit)
+      and query (range resolution, SQL aggregates, empty results) until the suite passes.
+      Range resolution also gets plain unit tests.
 - [ ] **M4 Data:** seed script (N sensors × 30 days, daily sine + noise, several metrics) via `COPY`.
 - [ ] **M5 UI:** single page that picks sensors, metrics, stat and range, then shows a table and a uPlot chart.
 - [ ] **M6 Perf:** k6 ingest (single vs batch) and query (1 day vs 31 days) scenarios; worker-count
-      sweep; results table in `perf/README.md`.
+      and data-volume sweeps; results table in `perf/README.md`.
 - [ ] **M7 Docs:** README with run instructions, assumptions, architecture, limitations and next steps.
 
 Cut unless time allows: a live simulator (a small loop posting to the API).
 
+### Way of working
+
+- Milestones are delegated to subagents with a written brief. The orchestrator reviews each
+  diff before it is committed, and an independent reviewer checks the riskier ones (M3).
+- The test suite is the contract: M3 may not change M2 tests to make them pass. A test
+  change needs a stated reason (a test bug or a deliberate contract change recorded here).
+- Pre-commit (ruff, ty, unit tests) is the fast verification loop for humans and agents alike.
+
 ## Testing
 
-- Integration tests hit the real API and a real Postgres. Aggregation and constraint behavior
-  is where bugs live, and SQLite would hide them.
-- Key cases: duplicate ingest is a no-op; empty range returns null; range validation edges
-  (exactly 1 day, 31 days, inverted, naive timestamps); all-sensors query; NaN rejection;
-  batch size limit.
-- Unit tests only for pure logic (range resolution).
+- **Black-box first.** The main suite (`tests/blackbox/`) only uses HTTP against a running
+  stack (`API_BASE_URL`, default the compose stack). It never imports app code or touches the
+  DB, so it tests the contract, not the implementation, and could run against any deployment.
+- **Isolation without DB access.** Each test uses unique sensor ids (uuid suffix) and explicit
+  past timestamps, so tests don't interfere and need no truncation. "All sensors" queries
+  assert on the test's own sensors being present with the right values.
+- Real Postgres behind the API: aggregation and constraint behavior is where bugs live, and
+  SQLite would hide them.
+- Key cases: duplicate ingest is a no-op (`duplicates` count); empty range returns null and
+  count 0; range validation edges (exactly 1 day, 31 days, too short, too long, inverted,
+  naive timestamps, defaults); all four stats on known values; multiple sensors and metrics;
+  all-sensors query; NaN/inf and bad name rejection; batch size limit; future timestamps.
+- Unit tests (`tests/unit/`) only for pure logic such as range resolution. These run in
+  pre-commit; the black-box suite needs the stack up.
 
 ## Performance test
 
