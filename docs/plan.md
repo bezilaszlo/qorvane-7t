@@ -172,11 +172,11 @@ contract and fail, then the implementation makes them pass. One commit per miles
 - [x] **M3 Implement (green):** ingest (validation, idempotent batch insert, ack after commit)
       and query (range resolution, SQL aggregates, empty results) until the suite passes.
       Range resolution also gets plain unit tests.
-- [ ] **M4 Data:** seed script (N sensors × 30 days, daily sine + noise, several metrics) via `COPY`.
-- [ ] **M5 UI:** single page that picks sensors, metrics, stat and range, then shows a results table and simple per-metric bar comparison.
-- [ ] **M6 Perf:** k6 ingest (single vs batch) and query (1 day vs 31 days) scenarios; worker-count
+- [x] **M4 Data:** seed script (N sensors × 30 days, daily sine + noise, several metrics) via `COPY`.
+- [x] **M5 UI:** single page that picks sensors, metrics, stat and range, then shows a results table and simple per-metric bar comparison.
+- [x] **M6 Perf:** k6 ingest (single vs batch) and query (1 day vs 31 days) scenarios; worker-count
       and data-volume sweeps; results table in `perf/README.md`.
-- [ ] **M7 Docs:** README with run instructions, assumptions, architecture, limitations and next steps.
+- [x] **M7 Docs:** README with run instructions, assumptions, architecture, limitations and next steps.
 
 Cut unless time allows: a live simulator (a small loop posting to the API).
 
