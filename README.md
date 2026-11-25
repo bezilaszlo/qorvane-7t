@@ -105,8 +105,12 @@ files next to them).
 ```bash
 uv sync
 make test                                        # unit tests (also run by pre-commit)
-docker compose up -d && make test-blackbox       # contract suite; API_BASE_URL overrides the target
 uv run pre-commit run --all-files                # ruff (lint + format), ty, unit tests
+
+# Contract suite against a separate, throwaway stack, so test sensors never appear in the demo data
+API_PORT=8010 docker compose -p bbtest up --build -d
+API_BASE_URL=http://localhost:8010 make test-blackbox
+docker compose -p bbtest down -v
 ```
 
 ## Performance (single node)
