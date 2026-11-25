@@ -25,7 +25,7 @@ seed:
 	$(TOOLS) run --rm seed $(SEED_ARGS)
 
 perf-ingest:
-	$(TOOLS) run --rm k6 run /perf/ingest.js
+	for b in 1 500; do BATCH=$$b $(TOOLS) run --rm k6 run /perf/ingest.js; done
 
 perf-query:
-	$(TOOLS) run --rm k6 run /perf/query.js
+	for c in day_single d30_all; do CASE=$$c $(TOOLS) run --rm k6 run /perf/query.js; done

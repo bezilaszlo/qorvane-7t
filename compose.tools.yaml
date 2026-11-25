@@ -18,8 +18,12 @@ services:
       - ./perf:/perf:ro
     environment:
       BASE_URL: http://api:8000
-      DURATION: ${DURATION:-30s}
-      VUS: ${VUS:-16}
+      DURATION: ${DURATION:-15s}
+      WARMUP: ${WARMUP:-10s}
+      LEVELS: ${LEVELS:-1,2,5,25}
+      CASE: ${CASE:-day_single}
+      BATCH: ${BATCH:-1}
+      SENSORS: ${SENSORS:-10}
     depends_on:
       api:
         condition: service_healthy
