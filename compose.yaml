@@ -28,6 +28,8 @@ services:
 
   api:
     build: .
+    cpus: 2 # mirrors a 2 vCPU / 2 GiB pod; WORKERS matches cpus
+    mem_limit: 2g
     environment:
       <<: *app-env
       WORKERS: 2 # API processes; one per CPU core available to the container
