@@ -238,17 +238,28 @@ document.addEventListener("alpine:init", () => {
       this.trendLoading = true;
       this.trendError = "";
       const n = clamp(Math.floor((win.end - win.start) / DAY_MS + 1e-6), 1, 31);
-      const jobs = [];
-      for (let i = 0; i < n; i++) {
-        const s = new Date(win.start.getTime() + i * DAY_MS);
-        const e = new Date(s.getTime() + DAY_MS);
-        const q = new URLSearchParams({ stat: "avg", start: s.toISOString(), end: e.toISOString() });
-        this.metrics.forEach((m) => q.append("metric", m));
-        this.selSensors.forEach((x) => q.append("sensor_id", x));
-        jobs.push(getJson(`${API}/stats?${q}`).then((b) => ({ s, e, rows: b.results })));
-      }
+      const days = new Array(n);
+      let next = 0;
+      let failed = null;
+      const worker = async () => {
+        while (next < n && !failed && token === this.token) {
+          const i = next++;
+          const s = new Date(win.start.getTime() + i * DAY_MS);
+          const e = new Date(s.getTime() + DAY_MS);
+          const q = new URLSearchParams({ stat: "avg", start: s.toISOString(), end: e.toISOString() });
+          this.metrics.forEach((m) => q.append("metric", m));
+          this.selSensors.forEach((x) => q.append("sensor_id", x));
+          try {
+            const b = await getJson(`${API}/stats?${q}`);
+            days[i] = { s, e, rows: b.results };
+          } catch (err) {
+            failed = err;
+            throw err;
+          }
+        }
+      };
       try {
-        const days = await Promise.all(jobs);
+        await Promise.all(Array.from({ length: Math.min(4, n) }, worker));
         if (token !== this.token) return;
         this.trend = days;
         this.drawChart();
@@ -298,7 +309,7 @@ document.addEventListener("alpine:init", () => {
       const mm = meta(m);
       const rows = this.result.results.filter((r) => r.metric === m).sort((a, b) => b.value - a.value);
       const val = (r) => `${this.fmt(r.value)}${mm.unit ? "\u00a0" + mm.unit : ""}`;
-      const name = (r) => `the ${pretty(r.sensor_id)}`;
+      const name = (r) => pretty(r.sensor_id);
       const when = this.period === "custom" ? `Between ${this.periodPhrase()}` : `Over ${this.periodPhrase()}`;
       const lower = mm.label.toLowerCase();
       const first = rows[0];
