@@ -90,8 +90,8 @@ Base path `/api/v1`. Errors use FastAPI's standard shape (`422` validation, `400
 ### `POST /api/v1/readings`
 
 Accepts a batch (1..1000 readings, each with at least 1 metric, capped at 10,000 total metric
-points per request to stay well under Postgres's 65,535 bind-parameter limit), so a single
-reading and a batch use the same endpoint.
+points per request to bound request size and transaction time), so a single reading and a
+batch use the same endpoint.
 
 ```json
 {
@@ -103,7 +103,9 @@ reading and a batch use the same endpoint.
 ```
 
 → `201 {"inserted": 2, "duplicates": 0}` (counts are per `(sensor_id, metric, ts)` point). The
-response is sent after commit, in one multi-row `INSERT ... ON CONFLICT DO NOTHING` per request.
+response is sent after commit, in one `INSERT ... SELECT FROM unnest(...) ON CONFLICT DO NOTHING`
+per request. Four array parameters instead of a multi-row `VALUES`: asyncpg caps a statement at
+32,767 bind arguments, which 10,000 points × 4 columns would exceed.
 
 ### `GET /api/v1/stats`
 
@@ -160,14 +162,14 @@ AGENTS.md, README.md, pyproject.toml, uv.lock, .pre-commit-config.yaml
 Red/green order: the stack runs first, then the black-box tests are written against the API
 contract and fail, then the implementation makes them pass. One commit per milestone.
 
-- [ ] **M1 Skeleton:** `docker compose up` starts the whole stack (Postgres + migrations + API
+- [x] **M1 Skeleton:** `docker compose up` starts the whole stack (Postgres + migrations + API
       serving the static UI). uv project, ruff, ty, pre-commit, config, async DB wiring, Alembic
       migration for `readings`, working `/health` and `/ready`. Core endpoints exist with their
       request/response schemas but return `501 Not Implemented`. `AGENTS.md`. No core logic.
-- [ ] **M2 Black-box test harness (red):** pytest suite that talks to the running API over HTTP
+- [x] **M2 Black-box test harness (red):** pytest suite that talks to the running API over HTTP
       only (see Testing). It covers the ingest and query contract and the assumptions above. It
       runs against the compose stack, and every core test fails against the 501 stubs.
-- [ ] **M3 Implement (green):** ingest (validation, idempotent batch insert, ack after commit)
+- [x] **M3 Implement (green):** ingest (validation, idempotent batch insert, ack after commit)
       and query (range resolution, SQL aggregates, empty results) until the suite passes.
       Range resolution also gets plain unit tests.
 - [ ] **M4 Data:** seed script (N sensors × 30 days, daily sine + noise, several metrics) via `COPY`.
