@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     db_pool_size: int = 5
     db_max_overflow: int = 5
     db_connect_timeout: float = 5.0
+    db_pool_timeout: float = 5.0
 
 
 @lru_cache

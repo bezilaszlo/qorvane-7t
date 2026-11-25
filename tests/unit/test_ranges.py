@@ -72,3 +72,15 @@ def test_mixed_utc_offsets_compare_by_instant():
     plus_two = timezone(timedelta(hours=2))
     start = (NOW - DAY).astimezone(plus_two)
     assert resolve_range(start, NOW, NOW) == (NOW - DAY, NOW)
+
+
+def test_only_start_in_the_future_is_rejected_on_start():
+    with pytest.raises(RangeError) as err:
+        resolve_range(NOW + timedelta(hours=1), None, NOW)
+    assert err.value.field == "start"
+
+
+def test_pair_error_has_no_single_field():
+    with pytest.raises(RangeError) as err:
+        resolve_range(NOW, NOW - DAY, NOW)
+    assert err.value.field is None

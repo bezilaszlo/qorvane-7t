@@ -276,3 +276,22 @@ def test_invalid_stat_rejected(get_stats, stat):
 
 def test_missing_stat_rejected(get_stats):
     assert get_stats(stat=None, metric=new_metric()).status_code == 422
+
+
+def test_sum_overflow_is_a_client_error_not_500(seed, get_stats, anchor):
+    sensor, metric = new_sensor(), new_metric()
+    seed_series(seed, sensor, metric, anchor, [1e308, 1e308])
+    response = get_stats(
+        stat="sum", metric=metric, sensor_id=sensor, start=anchor, end=anchor + DAY
+    )
+    assert response.status_code == 422
+
+
+def test_results_are_ordered_by_sensor_and_metric(seed, get_stats, anchor):
+    sensors = sorted(new_sensor() for _ in range(3))
+    metric = new_metric()
+    seed([reading(s, anchor, {metric: 1.0}) for s in reversed(sensors)])
+    results = get_stats(
+        stat="sum", metric=metric, sensor_id=sensors, start=anchor, end=anchor + DAY
+    )
+    assert [r["sensor_id"] for r in results.json()["results"]] == sensors

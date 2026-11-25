@@ -12,6 +12,7 @@ from app.schemas import IngestResult, ReadingsBatch
 router = APIRouter(prefix="/api/v1", tags=["readings"])
 
 MAX_FUTURE = timedelta(minutes=5)
+MIN_TS = datetime(1970, 1, 1, tzinfo=UTC)
 
 
 @router.post("/readings", status_code=status.HTTP_201_CREATED)
@@ -20,6 +21,12 @@ async def ingest_readings(batch: ReadingsBatch, conn: ConnDep) -> IngestResult:
     points = []
     for i, item in enumerate(batch.readings):
         ts = item.ts or now
+        if ts < MIN_TS:
+            raise validation_error(
+                ("body", "readings", str(i), "ts"),
+                "timestamp must not be before 1970-01-01",
+                "value_error",
+            )
         if ts > now + MAX_FUTURE:
             raise validation_error(
                 ("body", "readings", str(i), "ts"),
@@ -30,6 +37,9 @@ async def ingest_readings(batch: ReadingsBatch, conn: ConnDep) -> IngestResult:
             {"sensor_id": item.sensor_id, "metric": metric, "ts": ts, "value": value}
             for metric, value in item.metrics.items()
         )
+    # Stable sort: consistent lock order across concurrent batches (no deadlocks), and for
+    # an in-batch duplicate key the first occurrence in request order wins.
+    points.sort(key=lambda p: (p["sensor_id"], p["metric"], p["ts"]))
     # Four array parameters unnested server-side: a plain multi-row VALUES would need
     # 4 binds per point and exceed asyncpg's 32767-argument cap at 10,000 points.
     columns = {

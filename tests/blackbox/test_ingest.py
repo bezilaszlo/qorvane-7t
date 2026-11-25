@@ -189,3 +189,24 @@ def test_boundary_length_names_accepted(post_readings, anchor):
     sensor = "a" + "b" * 63
     metric = "a" + "b" * 31
     assert post_readings([reading(sensor, anchor, {metric: 1.0})]).status_code == 201
+
+
+@pytest.mark.parametrize("ts", ["0001-01-01T00:00:00+14:00", "1969-12-31T23:59:59Z"])
+def test_timestamp_before_1970_rejected(post_readings, ts):
+    response = post_readings(
+        [{"sensor_id": new_sensor(), "ts": ts, "metrics": {"temperature": 1.0}}]
+    )
+    assert response.status_code == 422
+
+
+def test_year_9999_timestamp_rejected_as_future(post_readings):
+    response = post_readings(
+        [
+            {
+                "sensor_id": new_sensor(),
+                "ts": "9999-12-31T23:59:59-14:00",
+                "metrics": {"temperature": 1.0},
+            }
+        ]
+    )
+    assert response.status_code == 422

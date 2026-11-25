@@ -28,7 +28,9 @@ async def get_stats(
     try:
         start, end = resolve_range(start, end, datetime.now(UTC))
     except RangeError as exc:
-        raise validation_error(("query", "start"), exc.message, "value_error") from exc
+        raise validation_error(
+            ("query", exc.field) if exc.field else ("query",), exc.message, "value_error"
+        ) from exc
 
     stmt = (
         select(
@@ -41,6 +43,7 @@ async def get_stats(
         # half-open [start, end)
         .where(readings.c.ts >= start, readings.c.ts < end)
         .group_by(readings.c.sensor_id, readings.c.metric)
+        .order_by(readings.c.sensor_id, readings.c.metric)
     )
     if sensor_id:
         stmt = stmt.where(readings.c.sensor_id.in_(sensor_id))
