@@ -46,8 +46,10 @@ async def request_validation_handler(request: Request, exc: Exception) -> JSONRe
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
-def _is_connection_failure(exc: SQLAlchemyError) -> bool:
-    if isinstance(exc, OperationalError | InterfaceError | PoolTimeoutError):
+def _is_connection_failure(exc: Exception) -> bool:
+    if isinstance(
+        exc, DatabaseUnavailableError | OperationalError | InterfaceError | PoolTimeoutError
+    ):
         return True
     return isinstance(exc, DBAPIError) and exc.connection_invalidated
 
@@ -61,27 +63,28 @@ def _sqlstate(exc: Exception) -> str:
     return code or ""
 
 
-async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:
+def classify_db_error(exc: Exception, method: str) -> tuple[int, dict[str, Any]]:
     if busy := BUSY_DETAILS.get(_sqlstate(exc)):
-        logger.warning("database timeout (%s): %r", busy, exc)
-        return JSONResponse(status_code=503, content={"detail": busy})
-    if isinstance(exc, SQLAlchemyError) and _is_connection_failure(exc):
-        logger.warning("database unavailable: %r", exc)
-        return JSONResponse(status_code=503, content=UNAVAILABLE)
+        return 503, {"detail": busy}
+    if _is_connection_failure(exc):
+        return 503, UNAVAILABLE
     if isinstance(exc, DataError) or _sqlstate(exc).startswith("22"):
-        loc = ["body"] if request.method in {"POST", "PUT", "PATCH"} else ["query"]
+        loc = ["body"] if method in {"POST", "PUT", "PATCH"} else ["query"]
         detail = [{"type": "value_error", "loc": loc, "msg": "numeric value out of range"}]
-        return JSONResponse(status_code=422, content={"detail": detail})
-    logger.error("unhandled database error", exc_info=exc)
-    return JSONResponse(status_code=500, content={"detail": "internal server error"})
+        return 422, {"detail": detail}
+    return 500, {"detail": "internal server error"}
 
 
-async def unavailable_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.warning("database unavailable: %r", exc.__cause__ or exc)
-    return JSONResponse(status_code=503, content=UNAVAILABLE)
+async def database_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    status, body = classify_db_error(exc, request.method)
+    if status == 500:
+        logger.error("unhandled database error", exc_info=exc)
+    else:
+        logger.warning("database error (%d): %r", status, exc.__cause__ or exc)
+    return JSONResponse(status_code=status, content=body)
 
 
 def register_handlers(app: FastAPI) -> None:
     app.add_exception_handler(RequestValidationError, request_validation_handler)
     app.add_exception_handler(SQLAlchemyError, database_error_handler)
-    app.add_exception_handler(DatabaseUnavailableError, unavailable_handler)
+    app.add_exception_handler(DatabaseUnavailableError, database_error_handler)
