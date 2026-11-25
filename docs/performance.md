@@ -1,6 +1,6 @@
-# Performance tests
+# Performance
 
-k6 load tests for the API, run against the Compose stack, plus single-node results.
+k6 load tests for the API (scripts in `perf/`), run against the Compose stack, plus single-node results.
 The numbers come from one laptop, with k6, the API and Postgres on the same host, so they show the
 shape of the curves and the bottleneck, not benchmark-lab figures.
 
@@ -25,6 +25,12 @@ Reproduction used for the tables below (separate project and port so other stack
 `API_PORT=8030 WORKERS=<n> DURATION=20s VUS=<8|16> docker compose -p perf-lane ...`.
 
 ## Method
+
+The runs used the code before two later changes: points sorted by key before insert, and the
+commit moved before the response. Neither touches the query path; both add negligible ingest work.
+Postgres timeouts added later (statement timeout 5 s by default) would cancel the slowest
+all-sensor queries measured at 13M rows (12 s) with a 503; see [design.md](design.md).
+
 
 - **Ingest** (`ingest.js`): two scenarios run one after another, 16 VUs each, 20 s: `batch1` (1 reading
   x 3 metrics = 3 points per request) and `batch500` (500 readings x 3 metrics = 1,500 points per
