@@ -7,8 +7,8 @@ Postgres is **not** limited and stock; it stands in for a separately sized manag
 Everything runs on one laptop, so the numbers show curve shapes, the bottleneck and the per-pod
 capacity on this hardware, not benchmark-lab figures.
 
-Measured code: current master (points sorted before insert, commit before ack, 5 s statement
-timeout, default pool sizing). Queries above 5 s are cancelled by Postgres and returned as
+Measured code: points sorted before insert, commit before ack, 5 s statement timeout, default
+pool sizing. Queries above 5 s are cancelled by Postgres and returned as
 `503 "query timed out"`; these appear below as errors.
 
 ## Method
@@ -29,7 +29,7 @@ The headline signal is the **throughput scaling factor** = peak rps / rps at c=1
   metrics, range ending now. Swept: `day_single` (1 day, one random sensor: API-overhead-bound) and
   `d30_all` (30 days, all sensors: Postgres-bound). Run at 1.3M rows (10 sensors x 30 days x 3
   metrics) and, for `d30_all` only, 13M (100 sensors). `day_single` at 13M was not re-run: the
-  earlier measurements (below) showed single-sensor queries unchanged between 1.3M and 13M, since the
+  earlier exploratory runs showed single-sensor queries unchanged between 1.3M and 13M, since the
   primary key narrows to the same rows.
 - Thresholds in the scripts are always-pass; they exist only so k6 reports per-level sub-metrics.
 - One run per cell, 15-20 s per level: expect +-10-20% noise.
@@ -110,29 +110,10 @@ Scaling factor 3.3x. API peak 190%, Postgres 407%.
 
 Scaling factor (ok/s) 2.1x at 1.3M, 1.4x at 13M. Postgres peaked at 750-780% CPU
 (parallel workers), the API at ~41%: the pod is idle, the database is the limit. The 503s are the
-5 s statement timeout shedding load; at 13M two or more concurrent clients already exceed it.
+5 s statement timeout shedding load; at 13M two concurrent clients still finish (~3.3 s), five already exceed it.
 The 13M p95/p99 rest on 7-75 requests per level.
 
 All other scenarios had zero non-2xx responses.
-
-### Comparison with the earlier, unlimited-API runs
-
-Earlier: no container limits (4 cores / 8 threads shared by API, Postgres and k6), `WORKERS=2`, pool
-5 + 5, fixed VUs, code before sorting / commit-before-ack / timeouts. Rough equivalents:
-
-| Scenario | Earlier (unlimited, 2 workers) | Now (2 CPU pod) |
-|---|---|---|
-| ingest batch 1, 16 VUs / c=10-25 | 766 req/s, p95 27 ms | 723-763 req/s, p95 16-62 ms |
-| ingest batch 500, 16 VUs / c=25 | 115k rows/s, p95 252 ms | 100k rows/s, p95 587 ms (c=10: 92k, 218 ms) |
-| query 1 day, 1 sensor, 8 VUs / c=5-25 | 716 req/s, p95 14 ms | 716-744 req/s, p95 9-50 ms |
-| query 30 days, all, 8 VUs / c=5 | ~2.5 req/s, p95 4.9 s | 2.7 req/s, p95 3.1 s |
-| query 30 days, all, 13M, 2 VUs / c=2 | p50 12.0 s | p50 3.2 s |
-
-The 2-CPU cap costs little: with 2 workers the old runs were already using about two cores of API.
-The old 13M 30-day figure (12 s) did not reproduce; the same query measured 1.9-3.2 s here
-(a throwaway fixed-VU run on this machine gave 2.9 s too), so the old number was most likely inflated
-by host contention and should not be relied on. The old worker sweep (WORKERS = 1, 2, 4, 8) is
-superseded: the pod has 2 CPUs and 2 workers.
 
 ## Interpretation
 
@@ -146,11 +127,11 @@ superseded: the pod has 2 CPUs and 2 workers.
   CPU in the API (JSON, Pydantic, driver), not the pool or Postgres (129-180%).
 - **Large batches are database-bound.** Batch 500 reaches ~100k rows/s (the API at ~190% is
   also busy serialising 1,500 points per request, but Postgres at ~400% is the larger consumer);
-  rows/s was still rising at c=25 (p95 587 ms). Batching is the main ingest lever: ~50x the rows/s
+  rows/s was still rising at c=25 (p95 587 ms). Batching is the main ingest lever: ~45x the rows/s
   of batch 1.
 - **Wide queries are Postgres CPU, and a pod cannot help.** All-sensor 30-day queries read every row in
-  range: they take Postgres to ~750% while the API sits at ~41%. Latency grows linearly with sensors
-  (645 ms at 10 sensors, ~1.9 s at 100 at c=1) and with queueing, and under concurrency they hit the 5 s
+  range: they take Postgres to ~750% while the API sits at ~41%. Latency grows with sensors
+  (645 ms at 10 sensors, ~1.9 s at 100 at c=1: about 3x for 10x the rows) and with queueing, and under concurrency they hit the 5 s
   statement timeout and are shed with 503. This is the intended behavior of the guardrail
   (the pool wait and statement timeout bound the damage); more API replicas would add load, not
   capacity.
@@ -158,34 +139,4 @@ superseded: the pod has 2 CPUs and 2 workers.
   Postgres competing with the API for cores (Postgres can use all 8 threads), warm cache, stock
   Postgres, CFS-quota CPU limit. Differences of ~10-20% are within noise.
 
-## How to read a future run
-
-- **Scaling factor falls toward 1x** (peak rps / rps at c=1): requests are being serialized, e.g. a
-  blocking call on the event loop or a single shared lock.
-- **p95 at c=1 rises** (here ~5 ms for 1-day queries, ~6 ms for batch-1 ingest): per-request cost
-  regressed (query plan, validation, serialization).
-- **p95 at c=25 rises while throughput stays flat**: the pod is saturated, which is expected.
-- **Errors at high c** (503s): load shedding by the pool wait or the statement timeout, expected beyond
-  pod or database capacity; the remedy is more replicas for API-bound paths, rollups or a bigger
-  database for the wide query. Non-503 errors are always a bug.
-
-## What the numbers point to
-
-- **Capacity per pod (2 CPU / 2 GB, this hardware, Postgres unlimited):** at p95 under 1 s, one pod
-  sustains about 740 req/s of 1-day/1-sensor queries (p95 50 ms at c=25), about 760 req/s of
-  batch-1 ingest (~2.3k rows/s, p95 16 ms at c=10), about 67 req/s of batch-500 ingest (~100k rows/s,
-  p95 587 ms at c=25), and only about 2 req/s of 30-day all-sensor queries at 10 sensors
-  (p95 1.0 s at c=2); at 100 sensors that query misses 1 s at any concurrency (2.3 s at c=1). Size
-  API replicas from the first three; do not size for the last, fix it.
-- **Query-heavy / rollups:** hourly (or daily) min/max/sum/count rollups, via a rollup table or
-  TimescaleDB continuous aggregates, bring 30-day all-sensor queries from seconds to milliseconds and
-  remove the timeouts. This is the clearest finding.
-- **Ingest-heavy:** clients should batch. Beyond ~100k rows/s on one Postgres the next steps are a
-  durable log in front of the DB with `COPY`-based writers, then sharding by `sensor_id`;
-  group-commit style buffering would help batch-1 traffic from many small devices.
-- **Large volume / retention:** partitioning and compression are about retention and index size, not
-  these latencies; single-sensor queries were flat from 1.3M to 13M (4 ms and ~36-41 ms p50 at 1 day and
-  30 days in earlier runs). The 100M point was not measured.
-- **Capacity sizing:** `workers x (pool_size + max_overflow)` is 2 x 15 = 30 connections per pod
-  against Postgres `max_connections=100`: about three pods fit before the limit needs raising or a
-  pooler is added. The pool was not the limit in these runs.
+What these limits mean for scaling: [architecture.md](architecture.md#scaling-with-adoption).

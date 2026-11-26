@@ -5,6 +5,13 @@ and answers questions about them, such as *"what was the average temperature and
 sensor 1 last week?"*. It offers a REST API, a simple web page to explore the data, and a test suite
 that defines how the API behaves.
 
+**Approach in short**
+
+- Kept intentionally minimal: one stateless API service and one Postgres database. Every reading
+  is committed before it is acknowledged, and retries are harmless.
+- Load tested to know where that setup runs out, so scaling can follow adoption: what to watch, and
+  what to add at each limit, is in [architecture.md](docs/architecture.md#scaling-with-adoption).
+
 ![Prototype architecture](docs/diagrams/architecture.svg)
 
 ## Quick start
@@ -19,6 +26,7 @@ make seed                        # optional: 30 days of synthetic data for 10 se
 - Web page: http://localhost:8000
 - API documentation: http://localhost:8000/docs
 - Stop: `docker compose down` (add `-v` to delete the data)
+- The web page lists sensors that reported in the last 24 hours; if it is empty, run `make seed` again.
 
 Port 8000 already taken? Start it on another one: `API_PORT=8001 docker compose up --build -d`.
 
@@ -56,7 +64,7 @@ A few rules worth knowing:
 - A query covers 1 to 31 days. Leave out the dates to get the last 24 hours.
 - Unknown sensors or empty periods return an empty result, not an error.
 
-The full list of assumptions is in [docs/design.md](docs/design.md#assumptions).
+Assumptions and key decisions are in [docs/architecture.md](docs/architecture.md#assumptions).
 
 ## Tests
 
@@ -77,10 +85,8 @@ implementation. Linting, type checks and unit tests also run as pre-commit hooks
 
 ## Documentation
 
-- [Design](docs/design.md): how it works, technical decisions, limitations and next steps
+- [Architecture](docs/architecture.md): assumptions, decisions and why, limits and next steps
 - [Performance](docs/performance.md): load tests and what one API pod can handle
-- Diagrams: [architecture](docs/diagrams/architecture.svg) and the
-  [production target data flow](docs/diagrams/dataflow.svg)
 
 ## Project layout
 
@@ -91,5 +97,5 @@ static/    the web page
 scripts/   synthetic data generator
 tests/     unit, integration (real Postgres) and contract (blackbox/) tests
 perf/      load test scripts
-docs/      design, performance, diagrams
+docs/      architecture, performance, diagram
 ```

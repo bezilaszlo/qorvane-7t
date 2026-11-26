@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Weather sensor metrics API: FastAPI (async) + SQLAlchemy Core on asyncpg + Postgres, run with Docker Compose. Design and decisions live in `docs/design.md`; record new ones there.
+Weather sensor metrics API: FastAPI (async) + SQLAlchemy Core on asyncpg + Postgres, run with Docker Compose. Assumptions and decisions live in `docs/architecture.md`; record new ones there.
 
 FastAPI conventions: follow the skill shipped in the installed package, `fastapi/.agents/skills/fastapi/SKILL.md` (under `.venv/lib/python*/site-packages/`).
 
